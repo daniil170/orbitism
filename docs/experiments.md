@@ -106,4 +106,74 @@ evaluated separately for position error and velocity error.
   - Empirical slope $p$ between discrete runs.
 * **Scientific Hypotheses / Theoretical Expectations**:
   - Explicit Euler is theoretically first order ($p = 1$); empirical $p$ is expected to asymptotically approach $1$ as $\Delta t \to 0$.
-  - Explicit Euler is non-symplectic and known to systematically inflate orbital energy in central force fields over time.
+  - Explicit Euler is non-symplectic and not energy-preserving for central force fields.
+
+---
+
+## 4. M2 — Time Evolution of Explicit Euler Error
+
+### Scientific Question
+How does the numerical error of the Explicit Euler integrator evolve over time throughout one complete orbital period ($t \in [0, T]$) for different numerical timesteps $\Delta t$?
+
+Unlike M1 (which investigated the final error $E_{\text{final}} = f(\Delta t)$ at $t = T$), M2 investigates the discrete error trajectory across sampled time steps:
+$$E = f(t, \Delta t), \quad t \in [0, T]$$
+
+### Setup & Initial Conditions
+* **Physical Model**: 2D classical two-body problem (Earth fixed at origin).
+* **Gravitational Parameter**: $\mu = 398600.435\text{ km}^3/\text{s}^2$.
+* **Reference Orbit**: Circular Low Earth Orbit (LEO) at altitude $h = 400.0\text{ km}$ above equatorial radius $R_E = 6378.137\text{ km}$.
+* **Radius**: $r_0 = R_E + h = 6778.137\text{ km}$.
+* **Mean Motion**: $n = \sqrt{\mu / r_0^3} \approx 0.001131358\text{ rad/s}$.
+* **Analytical Period**: $T = \frac{2\pi}{n} \approx 5553.624318623783\text{ s} \quad (\approx 92.56\text{ min})$.
+* **Initial State**: $x_0 = r_0$, $y_0 = 0\text{ km}$, $v_{x0} = 0\text{ km/s}$, $v_{y0} = \sqrt{\mu / r_0} \approx 7.668558109995\text{ km/s}$.
+* **Timesteps**:
+  $$\Delta t \in \{60.0\text{ s}, 30.0\text{ s}, 15.0\text{ s}, 7.5\text{ s}, 3.75\text{ s}, 1.875\text{ s}\}$$
+* **Step Shortening**: $\Delta t_{\text{step}} = \min(\Delta t, T - t)$ ensures simulation terminates exactly at $t = T$ without overshoot.
+
+### Error and Diagnostic Formulations
+At each discrete timestamp $t_k \in [0, T]$, the numerical state $[x_{\text{num}}, y_{\text{num}}, v_{x,\text{num}}, v_{y,\text{num}}]$ is evaluated against the independent exact analytical state:
+
+* **Analytical Reference State**:
+  $$x_{\text{exact}}(t) = r_0 \cos(nt), \quad y_{\text{exact}}(t) = r_0 \sin(nt)$$
+  $$v_{x, \text{exact}}(t) = -r_0 n \sin(nt), \quad v_{y, \text{exact}}(t) = r_0 n \cos(nt)$$
+
+* **Position Error**:
+  $$e_r(t) = \sqrt{(x_{\text{num}}(t) - x_{\text{exact}}(t))^2 + (y_{\text{num}}(t) - y_{\text{exact}}(t))^2} \quad [\text{km}]$$
+
+* **Velocity Error**:
+  $$e_v(t) = \sqrt{(v_{x,\text{num}}(t) - v_{x,\text{exact}}(t))^2 + (v_{y,\text{num}}(t) - v_{y,\text{exact}}(t))^2} \quad [\text{km/s}]$$
+
+* **Specific Orbital Energy Diagnostic**:
+  $$\varepsilon(t) = \frac{v(t)^2}{2} - \frac{\mu}{r(t)}, \quad \varepsilon_0 = -\frac{\mu}{2 r_0}$$
+  $$\delta\varepsilon(t) = \frac{\varepsilon(t) - \varepsilon_0}{|\varepsilon_0|}$$
+
+* **Specific Angular Momentum Diagnostic**:
+  $$h_z(t) = x(t) v_y(t) - y(t) v_x(t), \quad h_0 = r_0 \sqrt{\frac{\mu}{r_0}}$$
+  $$\delta h(t) = \frac{h_z(t) - h_0}{|h_0|}$$
+
+### Scientific Classification of Results
+
+#### 1. Tested Facts
+* Evaluated across 6 discrete timestep values ($\Delta t \in \{60.0, 30.0, 15.0, 7.5, 3.75, 1.875\}$ s) over one orbital period $T = 5553.624318623783$ s.
+* Dataset contains exactly 5840 rows without any NaN/Inf values or duplicate timestamps.
+* Simulation terminates precisely at $t = T$ without step overshoot ($t \le T$).
+* For the investigated circular orbit, one orbital period, and the tested timestep values, the recorded position and velocity errors were numerically non-decreasing at every saved discrete time point.
+* Maximum position and velocity errors equal final errors at $t = T$ for all tested timesteps.
+* Independent arithmetic verification matches CSV recorded values to machine floating-point precision.
+
+#### 2. Experimental Observations
+* Reducing $\Delta t$ systematically reduces final and maximum position, velocity, energy, and angular momentum errors.
+* For this configuration and timeframe, relative error in specific orbital energy $\delta\varepsilon(t)$ starts at zero, remains positive for $t > 0$, is monotonically non-decreasing on the sampled discrete time grid, and reaches its maximum at $t = T$.
+* For this configuration and timeframe, relative error in specific angular momentum $\delta h(t)$ starts at zero, remains positive for $t > 0$, is monotonically non-decreasing on the sampled discrete time grid, and reaches its maximum at $t = T$.
+
+#### 3. Theoretical Expectations
+* Explicit Euler is a first-order integration method; global truncation error is expected to scale as $\mathcal{O}(\Delta t)$ under standard convergence conditions.
+* Explicit Euler is non-symplectic and not energy-preserving for Hamiltonian orbital systems; energy conservation is not theoretically guaranteed.
+
+#### 4. Open Questions
+* Error evolution and monotonicity behavior over long-term integration horizons ($t \gg T$, multiple orbits).
+* Error trajectory behavior for eccentric orbits ($e > 0$) where velocity and distance vary along the trajectory.
+* Boundedness or secular growth of energy error over multi-orbit time scales.
+
+### Main Conclusion of M2
+For the investigated circular 2D orbit, over one analytical orbital period and for $\Delta t \in \{60.0, 30.0, 15.0, 7.5, 3.75, 1.875\}$ s, the recorded position and velocity errors were numerically non-decreasing at all saved time points and reached their maximum at the final time $T$. Reducing $\Delta t$ systematically reduced the final error. The observed positive growth of energy and angular-momentum relative errors is an experimental result for this configuration and time interval, not a universal property claimed for Explicit Euler.
