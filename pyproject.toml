@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orbitsim"
+version = "0.1.0"
+description = "Scientific computing and orbital simulation engine"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Daniil Ivakin" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra -q"
+
