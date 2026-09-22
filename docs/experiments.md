@@ -383,3 +383,90 @@ Projecting the displacement vector $\Delta\mathbf{r}(t) = \mathbf{r}_{\text{num}
 ### Open Questions
 1. How do higher-order non-symplectic integrators (e.g., Runge-Kutta 4th order) scale in radial drift versus phase error over $100 T$?
 2. Does a symplectic integrator (e.g., Verlet / Leapfrog) eliminate the secular quadratic phase divergence by preserving an exact shadow Hamiltonian?
+
+---
+
+## 7. M5 — Long-Term Stability and Error Decomposition of RK4
+
+### Goal
+Investigate the multi-orbit ($t \in [0, 100T]$) error evolution, invariant conservation, and rotating-frame error decomposition of the classical 4th-order Runge-Kutta (RK4) integrator, providing a rigorous side-by-side benchmark against Explicit Euler under identical physical and numerical conditions.
+
+### Mathematical Formulation & Implementation
+- **Integrator**: Classical 4th-order Runge-Kutta implemented in `src/integrators/rk4.py` (`RK4Integrator`).
+- **Runner**: `experiments/exp05_rk4_long_term.py` reusing `Simulator(integrator=RK4Integrator)` and `compute_decomposed_error_history()`.
+- **Initial State**: 400 km circular LEO ($r_0 = 6778.137\text{ km}$, $\mu = 398600.435\text{ km}^3/\text{s}^2$, $v_0 = 7.668558\text{ km/s}$, $T = 5553.624319\text{ s}$).
+- **Interval**: 100 orbits ($t_{\text{final}} = 100 T \approx 555362.43\text{ s} \approx 6.43\text{ days}$).
+- **Timesteps**: $\Delta t \in \{60.0, 30.0, 15.0, 7.5, 3.75, 1.875\}$ s with terminal step shortening $\Delta t_{\text{step}} = \min(\Delta t, 100T - t)$.
+- **Checkpoints**: $1T, 5T, 10T, 20T, 50T, 100T$.
+
+### Data Products
+1. **Full Trajectory Dataset**: `results/exp05_rk4_long_term.csv` (19 columns, ~583k rows across all timesteps).
+2. **Checkpoint Diagnostic Summary**: `results/exp05_rk4_long_term_summary.csv` (36 records across 6 timesteps and 6 checkpoints).
+
+### Checkpoint Summary Results
+
+| $\Delta t$ (s) | Ckpt | $e_r$ (km) | $e_R$ (km) | $e_T$ (km) | $\rho_R$ | $\rho_T$ | $\chi$ | Mode | $\Delta r$ (km) | $\Delta\theta$ (rad) | $\delta\varepsilon$ |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 60.000 | 1T | 0.02878 | -0.00171 | 0.02873 | 0.0035 | 0.9965 | 16.80 | phase | -0.00171 | $4.24 \times 10^{-6}$ | $-2.53 \times 10^{-7}$ |
+| 60.000 | 5T | 0.30459 | -0.00854 | 0.30447 | 0.0008 | 0.9992 | 35.65 | phase | -0.00853 | $4.49 \times 10^{-5}$ | $-1.26 \times 10^{-6}$ |
+| 60.000 | 10T | 1.01158 | -0.01715 | 1.01143 | 0.0003 | 0.9997 | 58.99 | phase | -0.01707 | $1.49 \times 10^{-4}$ | $-2.52 \times 10^{-6}$ |
+| 60.000 | 20T | 3.62962 | -0.03511 | 3.62945 | 0.0001 | 0.9999 | 103.38 | phase | -0.03413 | $5.35 \times 10^{-4}$ | $-5.04 \times 10^{-6}$ |
+| 60.000 | 50T | 21.1403 | -0.11831 | 21.1399 | 0.0000 | 1.0000 | 178.69 | phase | -0.08534 | $3.12 \times 10^{-3}$ | $-1.26 \times 10^{-5}$ |
+| 60.000 | 100T | 82.4991 | -0.67275 | 82.4964 | 0.0001 | 0.9999 | 122.63 | phase | -0.17069 | $1.22 \times 10^{-2}$ | $-2.52 \times 10^{-5}$ |
+| 30.000 | 1T | 0.00155 | $-5.33 \times 10^{-5}$ | 0.00155 | 0.0012 | 0.9988 | 29.00 | phase | $-5.33 \times 10^{-5}$ | $2.28 \times 10^{-7}$ | $-7.86 \times 10^{-9}$ |
+| 30.000 | 5T | 0.01276 | $-2.67 \times 10^{-4}$ | 0.01275 | 0.0004 | 0.9996 | 47.85 | phase | $-2.67 \times 10^{-4}$ | $1.88 \times 10^{-6}$ | $-3.93 \times 10^{-8}$ |
+| 30.000 | 10T | 0.03806 | $-5.33 \times 10^{-4}$ | 0.03805 | 0.0002 | 0.9998 | 71.38 | phase | $-5.33 \times 10^{-4}$ | $5.61 \times 10^{-6}$ | $-7.86 \times 10^{-8}$ |
+| 30.000 | 20T | 0.12633 | $-1.07 \times 10^{-3}$ | 0.12632 | 0.0001 | 0.9999 | 118.38 | phase | $-1.07 \times 10^{-3}$ | $1.86 \times 10^{-5}$ | $-1.57 \times 10^{-7}$ |
+| 30.000 | 50T | 0.69261 | $-2.70 \times 10^{-3}$ | 0.69260 | 0.0000 | 1.0000 | 256.49 | phase | $-2.66 \times 10^{-3}$ | $1.02 \times 10^{-4}$ | $-3.93 \times 10^{-7}$ |
+| 30.000 | 100T | 2.64103 | $-5.84 \times 10^{-3}$ | 2.64103 | 0.0000 | 1.0000 | 451.89 | phase | $-5.33 \times 10^{-3}$ | $3.90 \times 10^{-4}$ | $-7.86 \times 10^{-7}$ |
+| 15.000 | 1T | $8.88 \times 10^{-5}$ | $-1.67 \times 10^{-6}$ | $8.88 \times 10^{-5}$ | 0.0004 | 0.9996 | 53.32 | phase | $-1.67 \times 10^{-6}$ | $1.31 \times 10^{-8}$ | $-2.46 \times 10^{-10}$ |
+| 15.000 | 5T | $6.01 \times 10^{-4}$ | $-8.33 \times 10^{-6}$ | $6.01 \times 10^{-4}$ | 0.0002 | 0.9998 | 72.16 | phase | $-8.33 \times 10^{-6}$ | $8.86 \times 10^{-8}$ | $-1.23 \times 10^{-9}$ |
+| 15.000 | 10T | 0.00159 | $-1.67 \times 10^{-5}$ | 0.00159 | 0.0001 | 0.9999 | 95.72 | phase | $-1.67 \times 10^{-5}$ | $2.35 \times 10^{-7}$ | $-2.46 \times 10^{-9}$ |
+| 15.000 | 20T | 0.00476 | $-3.33 \times 10^{-5}$ | 0.00476 | 0.0000 | 1.0000 | 142.84 | phase | $-3.33 \times 10^{-5}$ | $7.02 \times 10^{-7}$ | $-4.91 \times 10^{-9}$ |
+| 15.000 | 50T | 0.02367 | $-8.33 \times 10^{-5}$ | 0.02367 | 0.0000 | 1.0000 | 284.08 | phase | $-8.33 \times 10^{-5}$ | $3.49 \times 10^{-6}$ | $-1.23 \times 10^{-8}$ |
+| 15.000 | 100T | 0.08657 | $-1.67 \times 10^{-4}$ | 0.08657 | 0.0000 | 1.0000 | 518.12 | phase | $-1.67 \times 10^{-4}$ | $1.28 \times 10^{-5}$ | $-2.46 \times 10^{-8}$ |
+| 7.500 | 100T | 0.00296 | $-5.20 \times 10^{-6}$ | 0.00296 | 0.0000 | 1.0000 | 568.39 | phase | $-5.20 \times 10^{-6}$ | $4.36 \times 10^{-7}$ | $-7.68 \times 10^{-10}$ |
+| 3.750 | 100T | $1.08 \times 10^{-4}$ | $-1.62 \times 10^{-7}$ | $1.08 \times 10^{-4}$ | 0.0000 | 1.0000 | 666.58 | phase | $-1.62 \times 10^{-7}$ | $1.61 \times 10^{-8}$ | $-2.40 \times 10^{-11}$ |
+| 1.875 | 100T | $4.27 \times 10^{-6}$ | $-4.57 \times 10^{-9}$ | $4.27 \times 10^{-6}$ | 0.0000 | 1.0000 | 933.71 | phase | $-4.57 \times 10^{-9}$ | $-3.19 \times 10^{-11}$ | $-7.24 \times 10^{-13}$ |
+
+### Side-by-Side Comparison: Explicit Euler vs. RK4 (at $100 T$)
+
+| $\Delta t$ (s) | Method | $e_r(100T)$ [km] | $\Delta r(100T)$ [km] | $\Delta\theta(100T)$ [rad] | $\delta\varepsilon(100T)$ | Error Reduction Ratio |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **60.0** | Euler | 61,782.18 | +55,872.85 | -560.59 (~-89.2 rev) | +0.8566 | **1x (baseline)** |
+| | **RK4** | **82.50** | **-0.17** | **+0.012 (~+0.002 rev)** | **$-2.52 \times 10^{-5}$** | **$749\times$ smaller** |
+| **30.0** | Euler | 32,930.88 | +30,841.37 | -528.53 (~-84.1 rev) | +0.8050 | **1x (baseline)** |
+| | **RK4** | **2.64** | **-0.0053** | **$+3.90 \times 10^{-4}$** | **$-7.86 \times 10^{-7}$** | **$12,500\times$ smaller** |
+| **15.0** | Euler | 20,598.18 | +20,535.85 | -490.21 (~-78.0 rev) | +0.7518 | **1x (baseline)** |
+| | **RK4** | **0.0866 (86.6 m)**| **$-1.67 \times 10^{-4}$**| **$+1.28 \times 10^{-5}$** | **$-2.46 \times 10^{-8}$** | **$238,000\times$ smaller** |
+| **7.5** | Euler | 26,967.08 | +15,504.34 | -442.05 (~-70.4 rev) | +0.6885 | **1x (baseline)** |
+| | **RK4** | **0.00296 (2.96 m)**| **$-5.20 \times 10^{-6}$**| **$+4.36 \times 10^{-7}$** | **$-7.68 \times 10^{-10}$** | **$9,120,000\times$ smaller** |
+| **3.75** | Euler | 10,859.66 | +10,594.54 | -383.05 (~-61.0 rev) | +0.6110 | **1x (baseline)** |
+| | **RK4** | **$1.08 \times 10^{-4}$ (10.8 cm)**| **$-1.62 \times 10^{-7}$**| **$+1.61 \times 10^{-8}$** | **$-2.40 \times 10^{-11}$** | **$100,000,000\times$ smaller** |
+| **1.875** | Euler | 7,319.22 | +7,317.23 | -314.14 (~-50.0 rev) | +0.5192 | **1x (baseline)** |
+| | **RK4** | **$4.27 \times 10^{-6}$ (4.27 mm)**| **$-4.57 \times 10^{-9}$**| **$-3.19 \times 10^{-11}$** | **$-7.24 \times 10^{-13}$** | **$1,710,000,000\times$ smaller** |
+
+### Scientific Classification of Results
+
+#### 1. Tested Facts
+* **Strict Monotonic Error Growth**: Unlike Explicit Euler, Euclidean position error $e_r(t)$ and velocity error $e_v(t)$ under RK4 grow strictly monotonically over time across all tested timesteps without oscillations, opposition peaks, or conjunction dips.
+* **Exact Orthogonality and Variance Partition**: The Pythagorean relation $e_r^2 \equiv e_R^2 + e_T^2$ holds to $< 10^{-10}\text{ km}^2$, and $\rho_R + \rho_T \equiv 1.0$ within $10^{-12}$ at all steps.
+* **Negative Energy Dissipation**: Relative energy error $\delta\varepsilon(t)$ and angular momentum error $\delta h(t)$ are strictly negative ($\delta\varepsilon < 0, \delta h < 0$) and grow linearly with time $t$.
+* **Asymptotic Invariant Relation**: At all checkpoints, the relative energy error and angular momentum error satisfy $\delta\varepsilon(t) \approx 2.0 \cdot \delta h(t)$ to high precision.
+
+#### 2. Experimental Observations
+* **Absolute Transverse Dominance**: Along-track phase error $e_T(t)$ accounts for $\ge 99.64\%$ of total position error variance ($\rho_T \ge 0.9964, \chi \ge 16.8$) across all checkpoints and timesteps. The dominant mode is 100% `phase`.
+* **Absence of Phase Winding**: Across the entire 100-orbit integration, the maximum phase slip observed is $\Delta\theta(100T) = +0.01217\text{ rad} \approx 0.697^\circ \ll 2\pi$ (for $\Delta t = 60\text{ s}$). For $\Delta t = 1.875\text{ s}$, phase drift is sub-nanoradian.
+* **Opposite Radial Drift Direction**: Explicit Euler produces massive outward radial drift ($\Delta r > 0$) due to energy injection. RK4 produces a tiny inward radial drift ($\Delta r < 0$) due to numerical energy dissipation.
+
+#### 3. Scientific Interpretation & Hypothesis Evaluation
+* **$H_{5.1}$ (Phase Locking) — SUPPORTED**:
+  RK4 suppresses numerical energy dissipation so profoundly ($|\delta\varepsilon| \le 2.52 \times 10^{-5}$ at $\Delta t = 60\text{ s}$) that the semi-major axis drift $|\Delta a| < 0.2\text{ km}$. By Kepler's third law, the mean motion perturbation $\Delta n$ remains negligible. The satellite never accumulates more than $0.002$ revolutions of phase slip, completely preventing entry into the phase-wound regime that caused the M3/M4 geometric paradox.
+* **$H_{5.2}$ (Along-Track Dominance) — SUPPORTED**:
+  In the small-phase regime ($|\Delta\theta| \ll 1\text{ rad}$), the chord distance is approximately along-track displacement ($e_T \approx r_0 \Delta\theta$). Because radial drift $\Delta r$ scales as $\mathcal{O}(\Delta t^4)$ while integrated phase lag scales as $t \cdot \Delta a \approx t \cdot \mathcal{O}(\Delta t^4)$, the secular accumulation of phase error vastly outpaces the instantaneous radial drift, leading to near-total transverse dominance ($\rho_T \approx 1.0$).
+* **$H_{5.3}$ (Non-Symplectic Secular Drift) — SUPPORTED**:
+  Classical RK4 is non-symplectic. Although energy conservation is superior to Euler by up to 12 orders of magnitude, energy drift does not remain bounded: it drifts linearly with time $t$ at rate $\dot{\varepsilon} \propto \Delta t^4$.
+
+### Open Questions
+1. Over ultra-long integration spans ($10^4 - 10^6$ orbits), does RK4's secular inward dissipation eventually cause the satellite to deorbit into the Earth ($r_{\text{num}} < R_E$)?
+2. Would a symplectic integrator (e.g. Verlet, Ruth, or Forest-Ruth) preserve $\delta\varepsilon$ within a bounded envelope indefinitely without secular inward or outward drift?

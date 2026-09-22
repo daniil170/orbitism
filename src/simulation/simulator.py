@@ -22,6 +22,7 @@ class Simulator:
         t_final: Optional[float] = None,
         mu: float = MU_EARTH,
         derivative_fn: Optional[Callable[[float, State2D], StateDerivative2D]] = None,
+        integrator: Optional[Union[EulerIntegrator, Any]] = None,
     ):
         """Initialize simulator instance.
 
@@ -32,6 +33,7 @@ class Simulator:
             t_final: Optional total simulation duration in seconds.
             mu: Gravitational parameter in km^3/s^2.
             derivative_fn: Optional custom derivative function dstate/dt = f(t, state).
+            integrator: Optional integrator instance or integrator class (defaults to EulerIntegrator).
         """
         self.initial_state = initial_state
         self.dt = dt
@@ -42,7 +44,13 @@ class Simulator:
         self.derivative_fn = derivative_fn or (
             lambda t, state: two_body_derivatives(t, state, mu=self.mu)
         )
-        self.integrator = EulerIntegrator(self.derivative_fn)
+        if integrator is None:
+            self.integrator = EulerIntegrator(self.derivative_fn)
+        elif isinstance(integrator, type):
+            self.integrator = integrator(self.derivative_fn)
+        else:
+            self.integrator = integrator
+
         self.trajectory: List[State2D] = []
         self.times: List[float] = []
 
