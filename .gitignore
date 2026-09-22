@@ -35,6 +35,7 @@ env/
 .idea/
 *.swp
 *.swo
+.DS_Store
 
 # Testing / coverage
 .pytest_cache/
