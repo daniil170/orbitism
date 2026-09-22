@@ -177,3 +177,98 @@ At each discrete timestamp $t_k \in [0, T]$, the numerical state $[x_{\text{num}
 
 ### Main Conclusion of M2
 For the investigated circular 2D orbit, over one analytical orbital period and for $\Delta t \in \{60.0, 30.0, 15.0, 7.5, 3.75, 1.875\}$ s, the recorded position and velocity errors were numerically non-decreasing at all saved time points and reached their maximum at the final time $T$. Reducing $\Delta t$ systematically reduced the final error. The observed positive growth of energy and angular-momentum relative errors is an experimental result for this configuration and time interval, not a universal property claimed for Explicit Euler.
+
+---
+
+## 5. M3 — Long-Term Stability of Explicit Euler
+
+### Goal
+Evaluate the long-term error trajectory and diagnostic invariant drift of the Explicit Euler integration scheme over multi-orbit time scales ($t \le 100 T$).
+
+### Research Question
+How do numerical timestep $\Delta t$ and integration duration ($t \in [0, 100 T]$) influence position error $e_r(t)$, velocity error $e_v(t)$, relative energy error $\delta\varepsilon(t)$, and relative angular momentum error $\delta h(t)$ of the Explicit Euler method in a 2D two-body central force field?
+
+### Hypothesis
+1. Explicit Euler is a non-symplectic numerical integration method and does not conserve physical energy invariants. Over long integration horizons ($t \gg T$), relative specific orbital energy error $\delta\varepsilon(t)$ and position error $e_r(t)$ are hypothesized to exhibit non-decreasing growth.
+2. Decreasing the numerical timestep $\Delta t$ systematically reduces the magnitude of position, velocity, energy, and angular momentum errors accumulated across the $100 T$ integration horizon.
+
+### Setup
+* **Physical Model**: 2D classical two-body Keplerian central gravity field (Earth fixed at origin).
+* **Equations of Motion**:
+  $$\frac{d\mathbf{r}}{dt} = \mathbf{v}, \quad \frac{d\mathbf{v}}{dt} = -\frac{\mu}{r^3} \mathbf{r}$$
+
+### Initial Conditions
+* **Gravitational Parameter**: $\mu = 398600.435\text{ km}^3/\text{s}^2$.
+* **Reference Orbital Altitude**: $h = 400.0\text{ km}$ above equatorial surface ($R_E = 6378.137\text{ km}$).
+* **Initial Orbital Radius**: $r_0 = R_E + h = 6778.137\text{ km}$.
+* **Initial State Vector**:
+  $$x_0 = r_0 = 6778.137\text{ km}, \quad y_0 = 0.0\text{ km}$$
+  $$v_{x0} = 0.0\text{ km/s}, \quad v_{y0} = \sqrt{\frac{\mu}{r_0}} \approx 7.668558109995\text{ km/s}$$
+* **Analytical Period**: $T = 5553.624318623783\text{ s}$ ($\approx 92.56\text{ min}$).
+
+### Numerical Method
+* **Scheme**: First-order Explicit Euler method:
+  $$\mathbf{r}_{k+1} = \mathbf{r}_k + \mathbf{v}_k \Delta t, \quad \mathbf{v}_{k+1} = \mathbf{v}_k + \mathbf{a}(\mathbf{r}_k) \Delta t$$
+* **Boundary Shortening**: Adaptive last step $\Delta t_{\text{step}} = \min(\Delta t, t_{\text{final}} - t)$ to guarantee exact termination at target final time horizon $t_{\text{final}} = N \cdot T$.
+
+### Timesteps
+Investigated discrete timesteps (identical to M1 and M2):
+$$\Delta t \in \{60.0\text{ s}, 30.0\text{ s}, 15.0\text{ s}, 7.5\text{ s}, 3.75\text{ s}, 1.875\text{ s}\}$$
+
+### Duration
+* **Maximum Horizon**: $t_{\text{final}} = 100 T \approx 555362.431862\text{ s}$ ($\approx 6.43\text{ days} \approx 154.27\text{ hours}$).
+* **Checkpoint Evaluation Horizons**: $1 T, 5 T, 10 T, 20 T, 50 T, 100 T$.
+
+### Metrics
+Strictly standard OrbitSim diagnostic suite (identical to M1 and M2):
+* **Euclidean Position Error**:
+  $$e_r(t) = \sqrt{(x_{\text{num}}(t) - x_{\text{exact}}(t))^2 + (y_{\text{num}}(t) - y_{\text{exact}}(t))^2} \quad [\text{km}]$$
+* **Euclidean Velocity Error**:
+  $$e_v(t) = \sqrt{(v_{x,\text{num}}(t) - v_{x,\text{exact}}(t))^2 + (v_{y,\text{num}}(t) - v_{y,\text{exact}}(t))^2} \quad [\text{km/s}]$$
+* **Relative Specific Orbital Energy Error**:
+  $$\delta\varepsilon(t) = \frac{\varepsilon(t) - \varepsilon_0}{|\varepsilon_0|}, \quad \varepsilon(t) = \frac{v(t)^2}{2} - \frac{\mu}{r(t)}, \quad \varepsilon_0 = -\frac{\mu}{2 r_0}$$
+* **Relative Specific Angular Momentum Error**:
+  $$\delta h(t) = \frac{h_z(t) - h_0}{|h_0|}, \quad h_z(t) = x(t) v_y(t) - y(t) v_x(t), \quad h_0 = r_0 v_{y0}$$
+
+### Reference
+Exact analytical circular Keplerian orbit at discrete timestamp $t$:
+$$x_{\text{exact}}(t) = r_0 \cos(nt), \quad y_{\text{exact}}(t) = r_0 \sin(nt)$$
+$$v_{x,\text{exact}}(t) = -r_0 n \sin(nt), \quad v_{y,\text{exact}}(t) = r_0 n \cos(nt)$$
+where mean motion $n = \sqrt{\frac{\mu}{r_0^3}} \approx 0.001131358\text{ rad/s}$.
+
+### Implementation Details
+* **Module Location**: `experiments/exp03_euler_long_term.py`
+* **Infrastructure Reuse**:
+  - `src/simulation/simulator.py`: Reuses `Simulator` class for stepping and adaptive boundary termination (`t_final = 100 * T`).
+  - `src/simulation/metrics.py`: Reuses `compute_error_history` for position error, velocity error, relative orbital energy error, and angular momentum error calculation.
+  - `src/physics/gravity.py`: Reuses `MU_EARTH`, `R_EARTH`, and `create_circular_orbit_state`.
+  - `src/physics/analytical.py`: Reuses `circular_orbit_period`.
+
+### Data Products
+1. **Full Trajectory Dataset**: `results/exp03_euler_long_term.csv`
+   - **Schema**: `dt_s`, `step`, `t_s`, `x_km`, `y_km`, `vx_km_s`, `vy_km_s`, `position_error_km`, `velocity_error_km_s`, `energy_error`, `angular_momentum_error`
+2. **Checkpoint Diagnostic Summary**: `results/exp03_euler_long_term_summary.csv`
+   - **Schema**: `dt_s`, `checkpoint_T`, `time_s`, `position_error_km`, `velocity_error_km_s`, `energy_error`, `angular_momentum_error`
+   - **Horizons**: $1T, 5T, 10T, 20T, 50T, 100T$
+
+### Testing Description
+* **Test Module**: `tests/test_long_term_stability.py`
+* **Verified Facts**:
+  1. `test_initial_error_at_t0_is_zero`: Initial state error at $t=0$ equals zero within float precision.
+  2. `test_long_term_history_starts_at_t0`: Trajectory history starts at $t=0$ for all timesteps.
+  3. `test_long_term_history_ends_at_100T_without_overshoot`: Integration terminates exactly at $t=100T$ with no step exceeding $100T + 10^{-12}\text{ s}$.
+  4. `test_long_term_history_strictly_monotonic`: Timestamps are strictly monotonically increasing ($t_{k+1} > t_k$).
+  5. `test_long_term_no_nan_or_inf_in_states_and_metrics`: States, position/velocity errors, energy errors, and angular momentum errors contain no NaN or Inf values.
+  6. `test_long_term_all_checkpoints_exist`: Summary extraction extracts exact entries for all 6 requested checkpoints ($1T, 5T, 10T, 20T, 50T, 100T$) per timestep.
+  7. `test_independent_verification_of_diagnostics`: Independent arithmetic evaluation of analytical reference states and invariant errors matches production module output to machine precision.
+* **Regression Tests**:
+  1. `test_regression_against_m2_trajectory_steps`: Un-shortened trajectory states during the first orbital period match M2 trajectory data to floating point precision.
+
+### Limitations
+1. Restricted to standard unperturbed 2D Keplerian motion (no $J_2$ Earth oblateness, no 3D inclination, no atmospheric drag, no lunar/solar gravity).
+2. Unperturbed circular reference solution is valid only for ideal two-body motion.
+3. Memory and disk storage considerations when exporting un-sampled full trajectories for fine timesteps over 100 orbits.
+
+### Open Questions
+1. How does the accumulated position error $e_r(100T)$ scale with timestep $\Delta t$?
+2. Does relative energy error $\delta\varepsilon(t)$ grow linearly or non-linearly with time over $100 T$?
