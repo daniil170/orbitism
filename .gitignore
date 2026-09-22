@@ -41,7 +41,9 @@ env/
 .coverage
 htmlcov/
 
-# Results / Output (keep directory structure, ignore data artifacts)
+# Results / Output (keep directory structure, ignore large data artifacts)
 results/*
 !results/.gitkeep
+!results/*.csv
+
 
