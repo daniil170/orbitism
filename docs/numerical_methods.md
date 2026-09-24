@@ -115,3 +115,32 @@ For state vector $\mathbf{s}_n$ at time $t_n$ and step size $\Delta t$:
 * **Non-Symplectic Nature**: Like Explicit Euler, classical RK4 is non-symplectic and does not strictly preserve the Hamiltonian or phase-space symplectic 2-form ($d\mathbf{p} \wedge d\mathbf{q} \neq \text{const}$). However, unlike Euler's large positive energy injection, RK4 introduces a tiny negative energy dissipation ($\delta\varepsilon < 0$), causing an exceedingly slow inward spiral.
 * **Absence of Phase-Winding**: Over multi-orbit spans ($100T$), the energy error remains so small ($|\delta\varepsilon| \le 2.5 \times 10^{-5}$) that the semi-major axis drift $|\Delta a| < 0.2\text{ km}$, keeping the cumulative phase lag $|\Delta\theta| \ll 2\pi$. As a result, RK4 never enters the geometric phase-wound regime that caused non-monotonic Cartesian error in Explicit Euler.
 
+---
+
+## 7. Velocity Verlet Integrator (Milestone M6)
+
+### Formulation and Algorithm
+
+The Velocity Verlet method is a canonical, time-reversible, second-order **symplectic integrator** designed specifically for separable Hamiltonian systems $\mathcal{H}(\mathbf{q}, \mathbf{p}) = \mathcal{T}(\mathbf{p}) + \mathcal{V}(\mathbf{q})$.
+
+The discrete step equations advancing state from $t_n$ to $t_{n+1} = t_n + \Delta t$ are:
+
+1. **Position Update**:
+   $$\mathbf{r}_{n+1} = \mathbf{r}_n + \mathbf{v}_n \Delta t + \frac{1}{2} \mathbf{a}(\mathbf{r}_n) \Delta t^2$$
+
+2. **Acceleration Evaluation**:
+   $$\mathbf{a}_{n+1} = \mathbf{a}(\mathbf{r}_{n+1}) = -\mu \frac{\mathbf{r}_{n+1}}{r_{n+1}^3}$$
+
+3. **Velocity Update**:
+   $$\mathbf{v}_{n+1} = \mathbf{v}_n + \frac{1}{2}\left[\mathbf{a}(\mathbf{r}_n) + \mathbf{a}_{n+1}\right] \Delta t$$
+
+### Error Characteristics and Symplectic Invariance
+
+* **Local Truncation Error (LTE)**: $\mathcal{O}(\Delta t^3)$ for position, $\mathcal{O}(\Delta t^3)$ for velocity.
+* **Global Truncation Error (GTE)**: $\mathcal{O}(\Delta t^2)$ over fixed duration $[0, T]$.
+* **Order of Accuracy**: Second order ($p = 2$).
+* **Symplecticity**: The Jacobian map $J = \partial(\mathbf{r}_{n+1}, \mathbf{v}_{n+1}) / \partial(\mathbf{r}_n, \mathbf{v}_n)$ satisfies $\det(J) \equiv 1$ and preserves the symplectic 2-form $\omega = d\mathbf{r} \wedge d\mathbf{v}$.
+* **Shadow Hamiltonian**: By backward error analysis, Velocity Verlet exactly solves a modified Hamiltonian $\widetilde{\mathcal{H}} = \mathcal{H} + \mathcal{O}(\Delta t^2)$. Consequently, orbital energy $\varepsilon$ does not secularly drift, but oscillates within a bounded envelope of width $\mathcal{O}(\Delta t^2)$ indefinitely.
+* **Exact Angular Momentum Conservation**: For any central force $\mathbf{a}(\mathbf{r}) \parallel \mathbf{r}$, the torque vanishes identically:
+  $$\mathbf{r}_{n+1} \times \mathbf{v}_{n+1} = \mathbf{r}_n \times \mathbf{v}_n$$
+  Specific angular momentum $h_z$ is an exact discrete invariant preserved down to floating-point roundoff.

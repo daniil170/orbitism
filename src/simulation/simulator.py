@@ -1,6 +1,6 @@
 """Simulation runner for orbital trajectories."""
 
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 from src.integrators.euler import EulerIntegrator
 from src.models.state import State2D, StateDerivative2D

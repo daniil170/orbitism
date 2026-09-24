@@ -16,7 +16,7 @@ OrbitSim investigates the numerical mechanics of orbital dynamics:
 
 ## Current Model
 
-In the current development phase (Milestone M0), OrbitSim models **2D planar satellite motion** around Earth:
+In the current development phase, OrbitSim models **2D planar satellite motion** around Earth:
 - Classical two-body gravitational model.
 - Earth positioned at the origin $(0, 0)$ as an unmoving central body.
 - Satellite treated as a point mass.
@@ -40,9 +40,11 @@ $$\ddot{\mathbf{r}} = -\frac{\mu}{r^3}\mathbf{r}$$
 
 ## Numerical Methods
 
-* **Explicit Euler (Forward Euler)**: First-order numerical integrator ($p = 1$) serving as the baseline solver.
-  $$\mathbf{s}_{n+1} = \mathbf{s}_n + \mathbf{f}(t_n, \mathbf{s}_n) \cdot \Delta t$$
-  The integrator is decoupled from the orbital physics domain and accepts arbitrary state derivative functions.
+* **Explicit Euler (Forward Euler)**: First-order numerical integrator ($p = 1$) serving as baseline solver.
+* **Classical Runge-Kutta (RK4)**: Fourth-order integrator ($p = 4$) providing high-order benchmark accuracy.
+* **Velocity Verlet**: Second-order symplectic integrator ($p = 2$) preserving phase-space geometry and invariants.
+
+All integrators are strictly decoupled from physical equations and operate generically on state derivative callables.
 
 ---
 
@@ -132,12 +134,14 @@ pytest -v
 
 ## Current Status
 
-**M0 — Mathematical foundation / initial Euler prototype**
-- 2D two-body equations and physical constants established.
-- Singularity handling and invariant tests implemented.
-- Decoupled Explicit Euler integrator operational.
-- Initial simulation pipeline functional.
-- Zero external runtime dependencies.
+**M6 — Symplectic Integrators and Long-Term Stability (Finalization)**
+- **M0**: 2D two-body equations, physical constants, and singularity handling established.
+- **M1**: Explicit Euler convergence study ($p = 1.0$) across timestep refinements.
+- **M2**: Time evolution of numerical error and physical invariants over 1 orbital period.
+- **M3**: Long-term stability analysis of Explicit Euler over 100 orbital periods ($100T$).
+- **M4**: Error decomposition into radial drift and along-track phase error; proof of phase lag dominance.
+- **M5**: Classical RK4 4th-order integrator implementation, convergence ($p = 4.0$), and secular dissipation benchmark.
+- **M6**: Symplectic Velocity Verlet integrator, machine-precision angular momentum preservation, bounded energy oscillations, and long-term stability validation.
 
 ---
 
