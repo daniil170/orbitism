@@ -103,10 +103,12 @@ To allow uniform comparison across all four methods, a common dyadic halving gri
 
 $$\Delta t \in \{60.0\text{ s}, 30.0\text{ s}, 15.0\text{ s}, 7.5\text{ s}, 3.75\text{ s}, 1.875\text{ s}\}$$
 
-### Rationale
+### Rationale and Endpoint Handling
 
 * **Dyadic Ratios**: Successive step sizes satisfy $\Delta t_k / \Delta t_{k+1} = 2.0$, allowing direct convergence order computation:
   $$p = \log_2\left(\frac{e(\Delta t_k)}{e(\Delta t_{k+1})}\right)$$
+* **Nominal Timestep Definition**: In convergence analysis, $\Delta t$ denotes the **nominal integration step**.
+* **Common Physical Endpoint**: Each run uses the nominal timestep $\Delta t$ for all full steps and a shortened final step when necessary so that the trajectory terminates at the common physical time $T$. Because $T \approx 5553.624319\text{ s}$ is non-integer in seconds, the final step $\Delta t_{\text{last}} = T - N_{\text{full}} \Delta t < \Delta t$ hits $t_f = T$ exactly, preventing artificial time-offset phase errors.
 * **Numerical Regime**:
   * For circular LEO ($T \approx 5554\text{ s}$), $\Delta t = 60\text{ s}$ corresponds to $\approx 92.5$ steps per orbit.
   * $\Delta t = 60\text{ s}$ is included because it lies within the previously tested regime for the current two-body model.
@@ -239,8 +241,28 @@ To ensure scientific integrity:
 Four standardized CSV schemas are defined for Milestone M8:
 
 ### 10.1 Convergence Study (`exp08_convergence.csv`)
-Logs 1-orbit short-term convergence data:
+Logs 1-orbit short-term convergence data across all 4 solvers and 6 nominal timesteps (24 rows total):
 `method,dt,num_steps,force_evals,e_r,e_v,order_p_r,ratio_r,max_de,max_dh,final_dr,final_dtheta,max_e_r,max_e_v,order_p_v,final_de,final_dh,max_dr`
+
+* **`method`**: Numerical integrator identifier (`Euler`, `Velocity Verlet`, `RK4`, `Yoshida 4`).
+* **`dt`**: Nominal integration timestep $\Delta t$ in seconds. All full steps use $\Delta t$, with a shortened step at the end to terminate at $T$.
+* **`num_steps`**: Total discrete integration steps taken to reach physical time $T = 5553.624319\text{ s}$.
+* **`force_evals`**: Total gravitational force evaluations ($N_{\text{steps}} \times \mathbf{C}_{\text{step}}$).
+* **`e_r`**: **Final Euclidean position error** at physical time $T$: $\|\mathbf{r}_{\text{num}}(T) - \mathbf{r}_{\text{exact}}(T)\|_2$ [km].
+* **`e_v`**: **Final Euclidean velocity error** at physical time $T$: $\|\mathbf{v}_{\text{num}}(T) - \mathbf{v}_{\text{exact}}(T)\|_2$ [km/s].
+* **`order_p_r`**: Empirical convergence order calculated from final position error $e_r$ between adjacent nominal timesteps: $\log_2(e_r(\Delta t) / e_r(\Delta t / 2))$.
+* **`ratio_r`**: Error reduction ratio between adjacent nominal timesteps: $e_r(\Delta t) / e_r(\Delta t / 2)$.
+* **`max_de`**: Maximum absolute relative specific orbital energy error over the solver's discrete trajectory: $\max_{t_k} |(\varepsilon(t_k) - \varepsilon_0)/\varepsilon_0|$.
+* **`max_dh`**: Maximum absolute relative specific angular momentum error over the solver's discrete trajectory: $\max_{t_k} |(h_z(t_k) - h_0)/h_0|$.
+* **`final_dr`**: Final absolute radial deviation at physical time $T$: $|r_{\text{num}}(T) - r_0|$ [km].
+* **`final_dtheta`**: Final along-track unwrapped phase error at physical time $T$: $|\Delta\theta(T)| = |\theta_{\text{unwrapped}}(T) - n T|$ [rad].
+* **`max_e_r`**: **Maximum Euclidean position error** evaluated over the solver's own discrete trajectory: $\max_{t_k} \|\mathbf{r}_{\text{num}}(t_k) - \mathbf{r}_{\text{exact}}(t_k)\|_2$ [km].
+* **`max_e_v`**: **Maximum Euclidean velocity error** evaluated over the solver's own discrete trajectory: $\max_{t_k} \|\mathbf{v}_{\text{num}}(t_k) - \mathbf{v}_{\text{exact}}(t_k)\|_2$ [km/s].
+* **`order_p_v`**: Empirical convergence order calculated from final velocity error $e_v$ between adjacent nominal timesteps: $\log_2(e_v(\Delta t) / e_v(\Delta t / 2))$.
+* **`final_de`**: Final signed relative specific orbital energy error at physical time $T$: $(\varepsilon(T) - \varepsilon_0)/|\varepsilon_0|$.
+* **`final_dh`**: Final signed relative specific angular momentum error at physical time $T$: $(h_z(T) - h_0)/|h_0|$.
+* **`max_dr`**: Maximum absolute radial deviation evaluated over the solver's own discrete trajectory: $\max_{t_k} |r_{\text{num}}(t_k) - r_0|$ [km].
+
 
 ### 10.2 Long-Term Fixed Timestep (`exp08_long_term_fixed_dt.csv`)
 Logs 100-orbit performance at fixed $\Delta t \in \{60.0, 30.0, 15.0\}\text{ s}$:
@@ -281,11 +303,13 @@ All results are reproducible by executing the standardized suite with fixed init
 * **Timestep Grid**: Exactly 6 timesteps per solver: $\Delta t \in \{60.0, 30.0, 15.0, 7.5, 3.75, 1.875\}\text{ s}$
 * **Total Executed Simulations**: 24 runs (4 solvers $\times$ 6 timesteps)
 * **Integration Horizon**: Exactly 1 orbital period ($t_f = T \approx 5553.624319\text{ s}$), identical across all runs
+* **Step Composition**: Each run executes $N_{\text{full}} = \lfloor T / \Delta t \rfloor$ nominal steps of size $\Delta t$, followed by a single shortened step $\Delta t_{\text{last}} = T - N_{\text{full}} \Delta t$ terminating precisely at $t_f = T$ (e.g. 92 steps of $60.0\text{ s}$ + 1 step of $33.624\text{ s}$).
 * **Generated Output Artifacts**:
   * `results/exp08_convergence.csv` (24 data rows + header)
   * `results/exp08_convergence_position.png` (log-log position error vs $\Delta t$)
   * `results/exp08_convergence_velocity.png` (log-log velocity error vs $\Delta t$)
   * `results/exp08_convergence_invariants.png` (energy and angular momentum errors vs $\Delta t$)
+
 
 ### 12.2 Measured Convergence Data Table
 
