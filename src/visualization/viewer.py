@@ -26,18 +26,21 @@ from src.physics.analytical import circular_orbit_period
 from src.integrators.euler import EulerIntegrator
 from src.integrators.rk4 import RK4Integrator
 from src.integrators.velocity_verlet import VelocityVerletIntegrator
+from src.integrators.yoshida4 import Yoshida4Integrator
 from src.simulation.simulator import Simulator
 
 METHOD_COLORS: Dict[str, str] = {
     "Euler": "#e74c3c",           # Red
     "RK4": "#2ecc71",             # Green
     "Velocity Verlet": "#3498db", # Blue
+    "Yoshida 4": "#9b59b6",       # Purple
 }
 
 METHOD_CLASSES = {
     "Euler": EulerIntegrator,
     "RK4": RK4Integrator,
     "Velocity Verlet": VelocityVerletIntegrator,
+    "Yoshida 4": Yoshida4Integrator,
 }
 
 

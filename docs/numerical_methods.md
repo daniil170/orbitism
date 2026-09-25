@@ -144,3 +144,66 @@ The discrete step equations advancing state from $t_n$ to $t_{n+1} = t_n + \Delt
 * **Exact Angular Momentum Conservation**: For any central force $\mathbf{a}(\mathbf{r}) \parallel \mathbf{r}$, the torque vanishes identically:
   $$\mathbf{r}_{n+1} \times \mathbf{v}_{n+1} = \mathbf{r}_n \times \mathbf{v}_n$$
   Specific angular momentum $h_z$ is an exact discrete invariant preserved down to floating-point roundoff.
+
+---
+
+## 8. Yoshida 4th-Order Symplectic Integrator (Milestone M7)
+
+### Formulation and Composition Principle
+
+The Yoshida 4th-order integrator (Yoshida, 1990) is constructed via a symmetric composition of a symmetric, time-reversible, second-order symplectic base integrator $S_2(h)$ (such as Velocity Verlet / leapfrog):
+
+$$S_4(h) = S_2(w_1 h) \circ S_2(w_0 h) \circ S_2(w_1 h)$$
+
+Because $S_2(h)$ is symmetric ($S_2(-h)^{-1} = S_2(h)$), its asymptotic expansion in terms of Lie differential operators contains only odd powers of the timestep $h$:
+
+$$S_2(h) = \exp\left(h D + h^3 D_3 + h^5 D_5 + \dots\right)$$
+
+Applying the symmetric composition of three substeps with weights $(w_1, w_0, w_1)$ yields the effective Lie generator:
+
+$$S_4(h) = \exp\left[(2w_1 + w_0) h D + (2w_1^3 + w_0^3) h^3 D_3 + \mathcal{O}(h^5)\right]$$
+
+### Yoshida Coefficients Origin
+
+To achieve 4th-order consistency, the composition weights must satisfy two algebraic conditions:
+
+1. **Consistency Condition** (order 1 recovery):
+   $$2 w_1 + w_0 = 1$$
+
+2. **Order Condition** (elimination of the 3rd-order error term):
+   $$2 w_1^3 + w_0^3 = 0 \implies w_0 = -2^{1/3} w_1$$
+
+Substituting $w_0$ into the consistency condition yields:
+
+$$w_1 = \frac{1}{2 - 2^{1/3}} \approx 1.3512071919596576$$
+
+$$w_0 = -\frac{2^{1/3}}{2 - 2^{1/3}} \approx -1.7024143839193153$$
+
+### The Negative Substep ($w_0 h$)
+
+The intermediate substep weight $w_0 < 0$ is strictly negative. This is not an error:
+* By the Suzuki (1991) theorem, no symmetric composition of order $p \ge 3$ with real coefficients can have all positive weights.
+* The negative substep represents an exact backwards-in-time integration step.
+* Because the underlying Velocity Verlet scheme is unconditionally time-reversible ($S_2(-h) \circ S_2(h) = I$), stepping backwards by $w_0 h$ is mathematically rigorous, numerically stable, and exact.
+
+### Computational Cost & Force Evaluations
+
+In our decoupled architecture (`src/integrators/yoshida4.py`), the integrator is implemented as a pure composition of three stateless `velocity_verlet_step` calls:
+* **Substep 1**: advances by $w_1 h$ (2 force evaluations: $a(r_0)$ and $a(r_1)$).
+* **Substep 2**: advances by $w_0 h$ (2 force evaluations: $a(r_1)$ and $a(r_2)$).
+* **Substep 3**: advances by $w_1 h$ (2 force evaluations: $a(r_2)$ and $a(r_3)$).
+* **Total Force Evaluations**: exactly **6 force evaluations per outer timestep**.
+
+#### Optimization Analysis:
+* At intermediate substep boundaries, $a(r_1)$ and $a(r_2)$ are evaluated twice (at the end of one substep and the beginning of the next).
+* In autonomous systems $\mathbf{a} = \mathbf{a}(\mathbf{r})$, these evaluations could theoretically be cached to reduce the cost to 4 evaluations per outer step (or 3 across outer steps using FSAL).
+* In M7, to preserve stateless architectural purity, avoid stateful side-effects, and strictly verify the mathematical composition $S_2 \circ S_2 \circ S_2$, caching is intentionally avoided (no premature optimization).
+
+### Invariants and Shadow Hamiltonian
+
+* **Local Truncation Error (LTE)**: $\mathcal{O}(h^5)$ per step.
+* **Global Truncation Error (GTE)**: $\mathcal{O}(h^4)$ over fixed duration $[0, T]$.
+* **Order of Accuracy**: Fourth order ($p = 4$).
+* **Symplecticity**: As a composition of symplectic maps, $S_4(h)$ is strictly canonical and preserves the phase-space 2-form $d\mathbf{p} \wedge d\mathbf{q}$.
+* **Shadow Hamiltonian**: By backward error analysis, Yoshida 4 exactly integrates a shadow Hamiltonian $\widetilde{\mathcal{H}} = \mathcal{H} + \mathcal{O}(h^4)$. Relative energy error $\delta\varepsilon$ oscillates within a tight envelope of width $\mathcal{O}(h^4)$ without secular drift.
+* **Central Force Angular Momentum**: Because each Velocity Verlet substep preserves angular momentum to machine precision, the full Yoshida 4 step conserves $h_z$ down to machine roundoff ($|\delta h| < 10^{-14}$).

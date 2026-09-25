@@ -589,6 +589,148 @@ Investigate whether a symplectic numerical integrator (Velocity Verlet) preserve
 3. **Ограничения физической модели**: Эксперимент не проверяет устойчивость при наличии неконсервативных сил (атмосферное торможение), реальных гравитационных возмущений ($J_2$, притяжение Луны и Солнца) или переменного шага интегрирования (adaptive timestep, разрушающий строгую симплектичность без симплектических трансформаций времени).
 4. **Порядок метода**: Будучи методом 2-го порядка, Velocity Verlet накапливает вдольтраекторную фазовую задержку со скоростью $\Delta n \propto \Delta t^2$.
 
-### Open Questions & Milestone M7 Justification
-1. Can a **4th-order symplectic integrator** (e.g. Yoshida 4th-order composition or Forest-Ruth) combine the geometric invariance of Velocity Verlet with the superior phase accuracy of RK4?
-2. Over ultra-long horizons ($t \ge 10^4 T$), at what crossover point does RK4's secular energy dissipation deorbit the satellite, while Velocity Verlet remains stable?
+---
+
+## 9. M7 — Fourth-Order Symplectic Integration
+
+### Goal
+Investigate whether a 4th-order symplectic integrator (Yoshida 1990) can simultaneously achieve high numerical discretization accuracy ($\mathcal{O}(\Delta t^4)$) and long-term geometric fidelity (phase space conservation, bounded energy oscillations, machine-precision angular momentum) in a conservative two-body Keplerian system over 100 orbital periods ($t \in [0, 100 T]$).
+
+### Mathematical Specification & Architecture
+- **Composition Scheme**:
+  $$S_4(h) = S_2(w_1 h) \circ S_2(w_0 h) \circ S_2(w_1 h)$$
+  where base map $S_2(h)$ is the symmetric 2nd-order Velocity Verlet integrator (`src/integrators/velocity_verlet.py`).
+- **Coefficients Origin & Conditions**:
+  - Consistency: $2 w_1 + w_0 = 1$
+  - 3rd-order error cancellation: $2 w_1^3 + w_0^3 = 0 \implies w_0 = -2^{1/3} w_1$
+  - Result:
+    $$w_1 = \frac{1}{2 - 2^{1/3}} \approx 1.3512071919596576$$
+    $$w_0 = -\frac{2^{1/3}}{2 - 2^{1/3}} \approx -1.7024143839193153$$
+- **The Negative Substep ($w_0 h$)**:
+  $w_0 < 0$ is a rigorous mathematical requirement (Suzuki 1991). In time-reversible Hamiltonian systems, negative substeps correspond to exact backwards propagation along the Hamiltonian flow without instability.
+- **Force Evaluations & Computational Cost**:
+  - Implemented in `src/integrators/yoshida4.py` as a composition of 3 independent Velocity Verlet substeps.
+  - Each substep calls the acceleration function twice (start and end).
+  - **Outer timestep cost**: exactly **6 force evaluations per step** without caching.
+  - Accelerations at substep boundaries could theoretically be cached (reducing to 4 evals/step, or 3 across steps), but caching is intentionally omitted to avoid stateful side-effects and maintain stateless architectural purity.
+- **Analytical Reference**:
+  For circular Keplerian orbits, the analytical state is known in closed form:
+  $$\mathbf{r}_{\text{exact}}(t) = [r_0 \cos(nt), r_0 \sin(nt)], \quad \mathbf{v}_{\text{exact}}(t) = [-r_0 n \sin(nt), r_0 n \cos(nt)]$$
+  with constants $\varepsilon_0 = -\mu/(2 r_0)$ and $h_0 = \sqrt{\mu r_0}$. All errors ($e_r, e_v, \Delta r, \Delta\theta, \delta\varepsilon, \delta h$) are evaluated directly against the analytical solution.
+
+### Data Products
+- `results/exp07_convergence.csv`: 1-orbit convergence table for Yoshida 4 across 6 timesteps.
+- `results/exp07_fourth_order_symplectic_summary.csv`: Checkpoint summaries at 1T, 5T, 10T, 20T, 50T, 100T (144 records: 4 methods $\times$ 6 timesteps $\times$ 6 checkpoints).
+- `results/exp07_long_term_comparison.csv`: Full 100T trajectory-wide max/final statistics across all 4 methods and timesteps.
+- `results/exp07_cost_normalized_comparison.csv`: Equal-cost comparison across 4 matched evaluation budgets.
+- `results/exp07_fourth_order_symplectic_integrators.csv`: Full trajectory dataset (ignored by git).
+
+---
+
+### Empirical Convergence Results (1 Orbit)
+
+| $\Delta t$ (s) | Steps | Force Evals | $e_r(T)$ (km) | Error Ratio | Order $p$ | $\max |\delta\varepsilon|$ | $\max |\delta h|$ |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **60.0** | 93 | 558 | $8.388 \times 10^{-1}$ | — | — | $4.78 \times 10^{-10}$ | $4.20 \times 10^{-16}$ |
+| **30.0** | 186 | 1,116 | $5.235 \times 10^{-2}$ | 16.02 | **4.002** | $1.87 \times 10^{-12}$ | $1.40 \times 10^{-15}$ |
+| **15.0** | 371 | 2,226 | $3.271 \times 10^{-3}$ | 16.00 | **4.000** | $1.23 \times 10^{-14}$ | $3.64 \times 10^{-15}$ |
+| **7.5** | 741 | 4,446 | $2.045 \times 10^{-4}$ | 16.00 | **4.000** | $5.56 \times 10^{-15}$ | $2.80 \times 10^{-15}$ |
+| **3.75** | 1,481 | 8,886 | $1.278 \times 10^{-5}$ | 16.00 | **4.000** | $2.38 \times 10^{-14}$ | $1.19 \times 10^{-14}$ |
+| **1.875**| 2,962 | 17,772 | $7.983 \times 10^{-7}$ | 16.01 | **4.001** | $1.61 \times 10^{-14}$ | $8.12 \times 10^{-15}$ |
+
+**Conclusion**: The convergence order of Yoshida 4 is empirically confirmed as $p = 4.000 \pm 0.002$ with an exact error ratio of $16.00\times$ per halving of $\Delta t$.
+
+---
+
+### Four-Way Integrator Comparison (Fixed Timestep at $100 T$)
+
+| $\Delta t$ (s) | Method | Order | Symplectic | Evals/Step | $e_r(100T)$ [km] | $\max |\Delta r|$ [km] | $\Delta\theta(100T)$ [rad] | $\max |\delta\varepsilon|$ | $\delta\varepsilon(100T)$ | $\max |\delta h|$ |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **60.0** | Euler | 1 | No | 1 | 61,782.18 | 57,938.98 | -560.59 | 0.8566 | +0.8566 | 1.4543 |
+| | RK4 | 4 | No | 4 | **82.50** | 0.174 | **+0.0122** | $2.52 \times 10^{-5}$ | $-2.52 \times 10^{-5}$ | $1.26 \times 10^{-5}$ |
+| | Verlet | 2 | Yes | 2 | 6,280.59 | 15.60 | -0.9634 | $5.27 \times 10^{-6}$ | $+7.99 \times 10^{-8}$ | $5.18 \times 10^{-15}$ |
+| | **Yoshida 4** | 4 | **Yes** | 6 | **83.83** | **0.148** | **+0.0124** | **$4.78 \times 10^{-10}$** | **$+7.01 \times 10^{-15}$** | **$1.53 \times 10^{-14}$** |
+| **30.0** | Euler | 1 | No | 1 | 32,930.88 | 33,626.07 | -528.53 | 0.8050 | +0.8050 | 1.2342 |
+| | RK4 | 4 | No | 4 | **2.64** | 0.0056 | **$+3.90 \times 10^{-4}$** | $7.86 \times 10^{-7}$ | $-7.86 \times 10^{-7}$ | $3.93 \times 10^{-7}$ |
+| | Verlet | 2 | Yes | 2 | 1,630.70 | 3.90 | -0.2412 | $3.31 \times 10^{-7}$ | $+3.31 \times 10^{-10}$ | $8.26 \times 10^{-15}$ |
+| | **Yoshida 4** | 4 | **Yes** | 6 | **5.24** | **0.0093** | **$+7.72 \times 10^{-4}$** | **$1.93 \times 10^{-12}$** | **$+6.02 \times 10^{-14}$** | **$3.09 \times 10^{-14}$** |
+| **15.0** | Euler | 1 | No | 1 | 20,598.18 | 22,318.43 | -490.21 | 0.7518 | +0.7518 | 1.0024 |
+| | RK4 | 4 | No | 4 | **0.0866** | $1.83 \times 10^{-4}$ | **$+1.28 \times 10^{-5}$** | $2.46 \times 10^{-8}$ | $-2.46 \times 10^{-8}$ | $1.23 \times 10^{-8}$ |
+| | Verlet | 2 | Yes | 2 | 408.74 | 0.976 | -0.0603 | $2.07 \times 10^{-8}$ | $+1.64 \times 10^{-12}$ | $8.68 \times 10^{-15}$ |
+| | **Yoshida 4** | 4 | **Yes** | 6 | **0.327** | **$5.79 \times 10^{-4}$** | **$+4.83 \times 10^{-5}$** | **$6.73 \times 10^{-14}$** | **$+5.78 \times 10^{-14}$** | **$3.02 \times 10^{-14}$** |
+| **7.5** | Euler | 1 | No | 1 | 26,967.08 | 15,504.34 | -442.05 | 0.6885 | +0.6885 | 0.7907 |
+| | RK4 | 4 | No | 4 | **0.00296**| $6.28 \times 10^{-6}$ | **$+4.36 \times 10^{-7}$** | $7.68 \times 10^{-10}$ | $-7.68 \times 10^{-10}$ | $3.84 \times 10^{-10}$ |
+| | Verlet | 2 | Yes | 2 | 102.21 | 0.244 | -0.0151 | $1.30 \times 10^{-9}$ | $+1.88 \times 10^{-14}$ | $8.54 \times 10^{-15}$ |
+| | **Yoshida 4** | 4 | **Yes** | 6 | **0.0204** | **$3.62 \times 10^{-5}$** | **$+3.02 \times 10^{-6}$** | **$7.36 \times 10^{-14}$** | **$+6.26 \times 10^{-14}$** | **$3.67 \times 10^{-14}$** |
+| **3.75** | Euler | 1 | No | 1 | 10,859.66 | 10,811.31 | -383.05 | 0.6110 | +0.6110 | 0.6033 |
+| | RK4 | 4 | No | 4 | **$1.08 \times 10^{-4}$**| $2.31 \times 10^{-7}$ | **$+1.61 \times 10^{-8}$** | $2.40 \times 10^{-11}$ | $-2.40 \times 10^{-11}$ | $1.20 \times 10^{-11}$ |
+| | Verlet | 2 | Yes | 2 | 25.55 | 0.061 | -0.00377 | $8.11 \times 10^{-11}$ | $+7.37 \times 10^{-14}$ | $4.41 \times 10^{-14}$ |
+| | **Yoshida 4** | 4 | **Yes** | 6 | **0.00128**| **$2.26 \times 10^{-6}$** | **$+1.88 \times 10^{-7}$** | **$1.07 \times 10^{-13}$** | **$+7.90 \times 10^{-14}$** | **$5.32 \times 10^{-14}$** |
+| **1.875**| Euler | 1 | No | 1 | 7,319.22 | 7,367.74 | -314.14 | 0.5192 | +0.5192 | 0.4422 |
+| | RK4 | 4 | No | 4 | **$4.27 \times 10^{-6}$**| $9.48 \times 10^{-9}$ | **$-3.19 \times 10^{-11}$** | $7.25 \times 10^{-13}$ | $-7.24 \times 10^{-13}$ | $3.62 \times 10^{-13}$ |
+| | Verlet | 2 | Yes | 2 | 6.39 | 0.0153 | -0.00094 | $5.06 \times 10^{-12}$ | $-4.40 \times 10^{-14}$ | $3.30 \times 10^{-14}$ |
+| | **Yoshida 4** | 4 | **Yes** | 6 | **$7.93 \times 10^{-5}$**| **$1.42 \times 10^{-7}$** | **$+1.16 \times 10^{-8}$** | **$2.24 \times 10^{-13}$** | **$+1.37 \times 10^{-13}$** | **$1.12 \times 10^{-13}$** |
+
+---
+
+### Cost-Normalized Comparison (Matched Force Evaluation Budgets at $100 T$)
+
+To eliminate timestep bias, all four methods are compared at identical numbers of gravitational force evaluations over 100 orbits:
+
+#### Budget 1: ~55,540 Force Evaluations
+| Method | $\Delta t$ (s) | Evals/Step | Total Evals | $e_r(100T)$ [km] | $\max |\Delta r|$ [km] | $\Delta\theta(100T)$ [rad] | $\max |\delta\varepsilon|$ | $\max |\delta h|$ |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Euler** | 10.0 | 1 | 55,537 | 24,316.00 | 17,874.17 | -463.31 | 0.7164 | 0.8759 |
+| **Verlet**| 20.0 | 2 | 55,538 | 726.35 | 1.735 | -0.1072 | $6.55 \times 10^{-8}$ | **$1.06 \times 10^{-14}$** |
+| **RK4** | 40.0 | 4 | 55,540 | **10.99** | **0.023** | **+0.00162** | $3.31 \times 10^{-6}$ | $1.66 \times 10^{-6}$ |
+| **Yoshida 4**| 60.0 | 6 | 55,542 | 83.83 | 0.148 | +0.01237 | **$4.78 \times 10^{-10}$** | **$1.53 \times 10^{-14}$** |
+
+#### Budget 2: ~111,075 Force Evaluations
+| Method | $\Delta t$ (s) | Evals/Step | Total Evals | $e_r(100T)$ [km] | $\max |\Delta r|$ [km] | $\Delta\theta(100T)$ [rad] | $\max |\delta\varepsilon|$ | $\max |\delta h|$ |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Euler** | 5.0 | 1 | 111,073 | 13,685.14 | 12,614.11 | -408.91 | 0.6449 | 0.6778 |
+| **Verlet**| 10.0 | 2 | 111,074 | 181.69 | 0.434 | -0.0268 | $4.10 \times 10^{-9}$ | **$3.57 \times 10^{-14}$** |
+| **RK4** | 20.0 | 4 | 111,076 | **0.356** | **$7.54 \times 10^{-4}$** | **$+5.26 \times 10^{-5}$**| $1.04 \times 10^{-7}$ | $5.18 \times 10^{-8}$ |
+| **Yoshida 4**| 30.0 | 6 | 111,078 | 5.24 | 0.0093 | $+7.72 \times 10^{-4}$ | **$1.93 \times 10^{-12}$** | **$3.09 \times 10^{-14}$** |
+
+#### Budget 3: ~222,150 Force Evaluations
+| Method | $\Delta t$ (s) | Evals/Step | Total Evals | $e_r(100T)$ [km] | $\max |\Delta r|$ [km] | $\Delta\theta(100T)$ [rad] | $\max |\delta\varepsilon|$ | $\max |\delta h|$ |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Euler** | 2.5 | 1 | 222,145 | 18,427.22 | 8,628.14 | -343.71 | 0.5591 | 0.5059 |
+| **Verlet**| 5.0 | 2 | 222,146 | 45.43 | 0.108 | -0.0067 | $2.56 \times 10^{-10}$ | **$1.89 \times 10^{-14}$** |
+| **RK4** | 10.0 | 4 | 222,148 | **0.0119** | **$2.53 \times 10^{-5}$** | **$+1.76 \times 10^{-6}$**| $3.24 \times 10^{-9}$ | $1.62 \times 10^{-9}$ |
+| **Yoshida 4**| 15.0 | 6 | 222,150 | 0.327 | $5.79 \times 10^{-4}$ | $+4.83 \times 10^{-5}$ | **$6.73 \times 10^{-14}$** | **$3.02 \times 10^{-14}$** |
+
+---
+
+### Scientific Analysis & Hypothesis Resolution
+
+#### 1. Tested Facts
+* **Empirical 4th-Order Convergence**: Yoshida 4 demonstrates an exact 4th-order convergence rate ($p = 4.000 \pm 0.002$) for position and velocity over an orbital period across all steps $\Delta t \in [1.875, 60.0]\text{ s}$.
+* **Exact Angular Momentum Invariance**: For all timesteps and all 100 orbits, maximum angular momentum error is bounded by floating-point roundoff:
+  $$\max_{t \in [0, 100T]} |\delta h(t)| \le 1.12 \times 10^{-13}$$
+  confirming that the composition preserves central-force angular momentum to machine precision.
+* **Bounded Energy Envelope Without Secular Drift**: Unlike RK4 (which exhibits strictly secular monotonic energy decrease $\dot{\varepsilon} < 0$), Yoshida 4 exhibits bounded, non-growing periodic oscillations with an amplitude scaling as $\mathcal{O}(\Delta t^4)$. At $\Delta t = 60\text{ s}$, $\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$, and final deviation $\delta\varepsilon(100T) \approx 7.01 \times 10^{-15}$.
+* **Drastic Reduction in Trajectory Error Relative to Verlet**: At $\Delta t = 60\text{ s}$, Yoshida 4 reduces 100T position error from $6,280.6\text{ km}$ (Velocity Verlet) down to $83.8\text{ km}$ ($75\times$ improvement), and at $\Delta t = 30\text{ s}$ down to $5.2\text{ km}$ ($311\times$ improvement).
+
+#### 2. Experimental Observations & Trade-Offs
+* **The Accuracy vs. Invariant Trade-Off (Cost-Normalized Perspective)**:
+  - At equal computational budget, **RK4 produces smaller instantaneous Cartesian state error** $e_r(100T)$ than Yoshida 4 (e.g. $10.99\text{ km}$ vs $83.83\text{ km}$ at ~55k evals, and $0.356\text{ km}$ vs $5.24\text{ km}$ at ~111k evals). This occurs because for circular orbits, RK4's leading error constant in along-track phase is smaller, and RK4 operates at a smaller timestep $\Delta t = \frac{4}{6}\Delta t_{\text{Y4}}$ for the same budget.
+  - Conversely, **Yoshida 4 preserves physical invariants far more effectively**: at ~55k evals, Yoshida 4 energy error is 4 orders of magnitude smaller ($4.78 \times 10^{-10}$ vs $3.31 \times 10^{-6}$) and angular momentum error is 8 orders of magnitude smaller ($1.53 \times 10^{-14}$ vs $1.66 \times 10^{-6}$).
+  - RK4 exhibits a **secular energy dissipation** that accumulates linearly in time ($|\delta\varepsilon| \propto t$), whereas Yoshida 4 energy error is strictly oscillatory and bounded.
+* **Distinction between Checkpoint Value and Trajectory Maximum**:
+  - In symplectic integrators (Verlet and Yoshida 4), the checkpoint value at $t = k T$ reflects a specific phase in the bounded oscillation and can be near machine precision ($\delta\varepsilon(100T) \approx 7.01 \times 10^{-15}$ for Yoshida 4 at $60\text{ s}$), while the trajectory maximum is $\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$.
+  - In non-symplectic RK4, the checkpoint value equals the trajectory maximum ($|\delta\varepsilon(100T)| \equiv \max |\delta\varepsilon| = 2.52 \times 10^{-5}$) because energy drifts secularly without oscillation.
+
+#### 3. Hypothesis Resolution
+* **$H_{\text{M7}}$ (Simultaneous High Order & Symplectic Preservation) — SUPPORTED**:
+  Yoshida 4 successfully combines 4th-order rate of convergence ($p \approx 4$) with exact symplecticity (bounded energy oscillation, machine-precision angular momentum, absence of phase winding).
+* **Neither Integrator is a Universal "Winner"**:
+  - For short/medium-term orbital prediction where pointwise Cartesian accuracy per evaluation is paramount, RK4 achieves lower trajectory error.
+  - For long-term conservative dynamics, orbital stability, and invariant preservation where energy dissipation or spiral collapse is forbidden, Yoshida 4 provides structural geometric correctness that RK4 cannot guarantee.
+
+### Scientific Limitations of M7
+1. **Model Scope**: Validated on an unperturbed 2D Keplerian two-body circular orbit.
+2. **Does NOT Prove Infinite-Time Stability**: Boundedness is empirically demonstrated for 100 orbital periods ($~6.4$ days). Over astronomical timescales ($10^6$ orbits), roundoff error accumulation may slowly degrade the invariant.
+3. **Does NOT Outperform RK4 in Trajectory Error at Matched Cost**: For fixed computational budgets, RK4 maintains lower Cartesian position error on circular orbits over 100T.
+4. **Does NOT Prevent Along-Track Phase Drift**: Like all fixed-step symplectic integrators, Yoshida 4 introduces a tiny frequency error $\Delta n \propto \Delta t^4$, causing along-track phase error $\Delta\theta$ to grow linearly with time $t$.

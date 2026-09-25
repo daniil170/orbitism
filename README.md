@@ -43,6 +43,7 @@ $$\ddot{\mathbf{r}} = -\frac{\mu}{r^3}\mathbf{r}$$
 * **Explicit Euler (Forward Euler)**: First-order numerical integrator ($p = 1$) serving as baseline solver.
 * **Classical Runge-Kutta (RK4)**: Fourth-order integrator ($p = 4$) providing high-order benchmark accuracy.
 * **Velocity Verlet**: Second-order symplectic integrator ($p = 2$) preserving phase-space geometry and invariants.
+* **Yoshida 4th-Order Symplectic**: Fourth-order symplectic integrator ($p = 4$) via symmetric composition of Velocity Verlet steps, combining high-order accuracy with exact phase-space symplecticity.
 
 All integrators are strictly decoupled from physical equations and operate generically on state derivative callables.
 
@@ -134,7 +135,7 @@ pytest -v
 
 ## Current Status
 
-**M6 — Symplectic Integrators and Long-Term Stability (Finalization)**
+**M7 — Fourth-Order Symplectic Integration**
 - **M0**: 2D two-body equations, physical constants, and singularity handling established.
 - **M1**: Explicit Euler convergence study ($p = 1.0$) across timestep refinements.
 - **M2**: Time evolution of numerical error and physical invariants over 1 orbital period.
@@ -142,6 +143,7 @@ pytest -v
 - **M4**: Error decomposition into radial drift and along-track phase error; proof of phase lag dominance.
 - **M5**: Classical RK4 4th-order integrator implementation, convergence ($p = 4.0$), and secular dissipation benchmark.
 - **M6**: Symplectic Velocity Verlet integrator, machine-precision angular momentum preservation, bounded energy oscillations, and long-term stability validation.
+- **M7**: Fourth-order symplectic integrator (Yoshida 1990) via symmetric composition; confirmed $p = 4.0$ convergence, bounded $\mathcal{O}(\Delta t^4)$ energy oscillations, machine-precision angular momentum, and cost-normalized 100T benchmark across four solvers.
 
 ---
 

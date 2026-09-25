@@ -6,6 +6,10 @@ from src.integrators.velocity_verlet import (
     velocity_verlet_step,
     VelocityVerletIntegrator,
 )
+from src.integrators.yoshida4 import (
+    yoshida4_step,
+    Yoshida4Integrator,
+)
 
 __all__ = [
     "euler_step",
@@ -14,4 +18,6 @@ __all__ = [
     "RK4Integrator",
     "velocity_verlet_step",
     "VelocityVerletIntegrator",
+    "yoshida4_step",
+    "Yoshida4Integrator",
 ]
