@@ -56,29 +56,54 @@ CURRENT_IMPLEMENTATION_EVALS_PER_STEP: Dict[str, int] = {
 }
 
 # Planned output schemas for M8
-PLANNED_ACCURACY_VS_DT_COLUMNS: List[str] = [
+PLANNED_CONVERGENCE_COLUMNS: List[str] = [
     "method",
     "dt",
-    "orbit_count",
-    "time",
+    "num_steps",
+    "force_evals",
     "e_r",
     "e_v",
-    "delta_r",
-    "delta_theta",
-    "evals_per_step",
-    "total_evals",
+    "order_p_r",
+    "ratio_r",
+    "max_de",
+    "max_dh",
+    "final_dr",
+    "final_dtheta",
 ]
 
-PLANNED_ACCURACY_VS_COST_COLUMNS: List[str] = [
-    "budget_id",
-    "target_force_evals",
+PLANNED_LONG_TERM_FIXED_DT_COLUMNS: List[str] = [
     "method",
     "dt",
+    "evals_per_step",
+    "total_steps",
     "actual_force_evals",
+    "max_position_error",
     "final_position_error",
+    "max_velocity_error",
+    "final_velocity_error",
+    "max_radial_deviation",
     "final_radial_deviation",
     "final_phase_error",
     "max_relative_energy_error",
+    "final_relative_energy_error",
+    "max_relative_angular_momentum_error",
+]
+
+PLANNED_ACCURACY_VS_COST_COLUMNS: List[str] = [
+    "budget_name",
+    "target_evals",
+    "method",
+    "dt",
+    "evals_per_step",
+    "total_steps",
+    "actual_force_evals",
+    "max_position_error",
+    "final_position_error",
+    "max_radial_deviation",
+    "final_radial_deviation",
+    "final_phase_error",
+    "max_relative_energy_error",
+    "final_relative_energy_error",
     "max_relative_angular_momentum_error",
 ]
 
@@ -92,6 +117,25 @@ PLANNED_INVARIANT_QUALITY_COLUMNS: List[str] = [
     "final_dh_checkpoint",
     "dh_character",  # 'roundoff_limited' vs 'secular_drift'
 ]
+
+
+def compute_force_evals_per_step(method: str) -> int:
+    """Return number of force evaluations per external integration step."""
+    if method not in CURRENT_IMPLEMENTATION_EVALS_PER_STEP:
+        raise KeyError(f"Unknown solver method: {method}")
+    return CURRENT_IMPLEMENTATION_EVALS_PER_STEP[method]
+
+
+def compute_total_force_evals(method: str, num_steps: int) -> int:
+    """Compute total force evaluations given solver method and number of integration steps."""
+    return num_steps * compute_force_evals_per_step(method)
+
+
+def compute_dt_for_budget(method: str, t_final: float, target_evals: int) -> float:
+    """Compute required timestep dt to achieve target force evaluation budget over t_final."""
+    cost_per_step = compute_force_evals_per_step(method)
+    target_steps = target_evals / cost_per_step
+    return t_final / target_steps
 
 
 @dataclass(frozen=True)
