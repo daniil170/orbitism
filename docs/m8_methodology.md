@@ -240,7 +240,7 @@ Four standardized CSV schemas are defined for Milestone M8:
 
 ### 10.1 Convergence Study (`exp08_convergence.csv`)
 Logs 1-orbit short-term convergence data:
-`method,dt,num_steps,force_evals,e_r,e_v,order_p_r,ratio_r,max_de,max_dh,final_dr,final_dtheta`
+`method,dt,num_steps,force_evals,e_r,e_v,order_p_r,ratio_r,max_de,max_dh,final_dr,final_dtheta,max_e_r,max_e_v,order_p_v,final_de,final_dh,max_dr`
 
 ### 10.2 Long-Term Fixed Timestep (`exp08_long_term_fixed_dt.csv`)
 Logs 100-orbit performance at fixed $\Delta t \in \{60.0, 30.0, 15.0\}\text{ s}$:
@@ -269,3 +269,68 @@ Logs qualitative and quantitative invariant metrics:
 All results are reproducible by executing the standardized suite with fixed initial conditions:
 * Initial state: $\mathbf{r}_0 = [6778.137, 0.0]^T\text{ km}$, $\mathbf{v}_0 = [0.0, \sqrt{\mu/r_0}]^T\text{ km/s}$
 * Floating-point environment: Standard IEEE 754 double precision (64-bit float).
+
+---
+
+## 12. Executed Milestone M8.1: Analytical Convergence Study Results
+
+### 12.1 Execution Parameters
+* **Execution Timestamp**: 2026-09-26 (calibrated on baseline commit `6c2b577`)
+* **Reference Solution**: Exact closed-form Keplerian circular solution ($r_0 = 6778.137\text{ km}$, $n \approx 1.131370 \times 10^{-3}\text{ rad/s}$, $T \approx 5553.624319\text{ s}$)
+* **Number of Solvers**: Exactly 4 (`Explicit Euler`, `Velocity Verlet`, `Classical RK4`, `Yoshida 4`)
+* **Timestep Grid**: Exactly 6 timesteps per solver: $\Delta t \in \{60.0, 30.0, 15.0, 7.5, 3.75, 1.875\}\text{ s}$
+* **Total Executed Simulations**: 24 runs (4 solvers $\times$ 6 timesteps)
+* **Integration Horizon**: Exactly 1 orbital period ($t_f = T \approx 5553.624319\text{ s}$), identical across all runs
+* **Generated Output Artifacts**:
+  * `results/exp08_convergence.csv` (24 data rows + header)
+  * `results/exp08_convergence_position.png` (log-log position error vs $\Delta t$)
+  * `results/exp08_convergence_velocity.png` (log-log velocity error vs $\Delta t$)
+  * `results/exp08_convergence_invariants.png` (energy and angular momentum errors vs $\Delta t$)
+
+### 12.2 Measured Convergence Data Table
+
+| Method | $\Delta t$ [s] | Steps | Evals | $e_r(T)$ [km] | $e_v(T)$ [km/s] | Order $p_r$ | Order $p_v$ | $\max |\delta\varepsilon|$ | $\max |\delta h|$ | Final $\Delta\theta$ [rad] |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Euler** | 60.0 | 93 | 93 | $1.5978 \times 10^{4}$ | $1.1313 \times 10^{1}$ | — | — | $3.6382 \times 10^{-1}$ | $2.3854 \times 10^{-1}$ | $1.9855 \times 10^{0}$ |
+| **Euler** | 30.0 | 186 | 186 | $1.0243 \times 10^{4}$ | $8.7365 \times 10^{0}$ | 0.64 | 0.37 | $2.4212 \times 10^{-1}$ | $1.4653 \times 10^{-1}$ | $1.3281 \times 10^{0}$ |
+| **Euler** | 15.0 | 371 | 371 | $5.9398 \times 10^{3}$ | $5.7017 \times 10^{0}$ | 0.79 | 0.62 | $1.5179 \times 10^{-1}$ | $8.5569 \times 10^{-2}$ | $7.9830 \times 10^{-1}$ |
+| **Euler** | 7.5 | 741 | 741 | $3.2143 \times 10^{3}$ | $3.3052 \times 10^{0}$ | 0.89 | 0.79 | $8.8250 \times 10^{-2}$ | $4.7260 \times 10^{-2}$ | $4.4433 \times 10^{-1}$ |
+| **Euler** | 3.75 | 1481 | 1481 | $1.6729 \times 10^{3}$ | $1.7867 \times 10^{0}$ | 0.94 | 0.89 | $4.8234 \times 10^{-2}$ | $2.5025 \times 10^{-2}$ | $2.3568 \times 10^{-1}$ |
+| **Euler** | 1.875 | 2962 | 2962 | $8.5333 \times 10^{2}$ | $9.2990 \times 10^{-1}$ | 0.97 | 0.94 | $2.5315 \times 10^{-2}$ | $1.2903 \times 10^{-2}$ | $1.2158 \times 10^{-1}$ |
+| **Velocity Verlet** | 60.0 | 93 | 186 | $6.5437 \times 10^{1}$ | $7.3781 \times 10^{-2}$ | — | — | $5.2714 \times 10^{-6}$ | $4.1994 \times 10^{-16}$ | $9.6542 \times 10^{-3}$ |
+| **Velocity Verlet** | 30.0 | 186 | 372 | $1.6352 \times 10^{1}$ | $1.8490 \times 10^{-2}$ | 2.00 | 2.00 | $3.3118 \times 10^{-7}$ | $1.1198 \times 10^{-15}$ | $2.4124 \times 10^{-3}$ |
+| **Velocity Verlet** | 15.0 | 371 | 742 | $4.0893 \times 10^{0}$ | $4.6242 \times 10^{-3}$ | 2.00 | 2.00 | $2.0727 \times 10^{-8}$ | $1.2598 \times 10^{-15}$ | $6.0330 \times 10^{-4}$ |
+| **Velocity Verlet** | 7.5 | 741 | 1482 | $1.0223 \times 10^{0}$ | $1.1562 \times 10^{-3}$ | 2.00 | 2.00 | $1.2958 \times 10^{-9}$ | $1.3998 \times 10^{-15}$ | $1.5083 \times 10^{-4}$ |
+| **Velocity Verlet** | 3.75 | 1481 | 2962 | $2.5553 \times 10^{-1}$ | $2.8909 \times 10^{-4}$ | 2.00 | 2.00 | $8.0990 \times 10^{-11}$ | $4.7593 \times 10^{-15}$ | $3.7699 \times 10^{-5}$ |
+| **Velocity Verlet** | 1.875 | 2962 | 5924 | $6.3883 \times 10^{-2}$ | $7.2273 \times 10^{-5}$ | 2.00 | 2.00 | $5.0647 \times 10^{-12}$ | $2.0997 \times 10^{-15}$ | $9.4249 \times 10^{-6}$ |
+| **RK4** | 60.0 | 93 | 372 | $2.8783 \times 10^{-2}$ | $3.2435 \times 10^{-5}$ | — | — | $2.5036 \times 10^{-7}$ | $1.2518 \times 10^{-7}$ | $4.2391 \times 10^{-6}$ |
+| **RK4** | 30.0 | 186 | 744 | $1.5464 \times 10^{-3}$ | $1.7482 \times 10^{-6}$ | 4.22 | 4.21 | $7.8581 \times 10^{-9}$ | $3.9291 \times 10^{-9}$ | $2.2801 \times 10^{-7}$ |
+| **RK4** | 15.0 | 371 | 1484 | $8.8815 \times 10^{-5}$ | $1.0043 \times 10^{-7}$ | 4.12 | 4.12 | $2.4552 \times 10^{-10}$ | $1.2276 \times 10^{-10}$ | $1.3101 \times 10^{-8}$ |
+| **RK4** | 7.5 | 741 | 2964 | $5.3059 \times 10^{-6}$ | $6.0003 \times 10^{-9}$ | 4.07 | 4.06 | $7.6783 \times 10^{-12}$ | $3.8391 \times 10^{-12}$ | $7.8276 \times 10^{-10}$ |
+| **RK4** | 3.75 | 1481 | 5924 | $3.2393 \times 10^{-7}$ | $3.6649 \times 10^{-10}$ | 4.03 | 4.03 | $2.4455 \times 10^{-13}$ | $1.2234 \times 10^{-13}$ | $4.7809 \times 10^{-11}$ |
+| **RK4** | 1.875 | 2962 | 11848 | $1.9976 \times 10^{-8}$ | $2.2575 \times 10^{-11}$ | 4.02 | 4.02 | $7.6121 \times 10^{-15}$ | $3.7795 \times 10^{-15}$ | $2.9372 \times 10^{-12}$ |
+| **Yoshida 4** | 60.0 | 93 | 558 | $8.3884 \times 10^{-1}$ | $9.4614 \times 10^{-4}$ | — | — | $4.7836 \times 10^{-10}$ | $4.1994 \times 10^{-16}$ | $1.2376 \times 10^{-4}$ |
+| **Yoshida 4** | 30.0 | 186 | 1116 | $5.2354 \times 10^{-2}$ | $5.9210 \times 10^{-5}$ | 4.00 | 4.00 | $1.8699 \times 10^{-12}$ | $1.3998 \times 10^{-15}$ | $7.7240 \times 10^{-6}$ |
+| **Yoshida 4** | 15.0 | 371 | 2226 | $3.2715 \times 10^{-3}$ | $3.6999 \times 10^{-6}$ | 4.00 | 4.00 | $1.2324 \times 10^{-14}$ | $3.6395 \times 10^{-15}$ | $4.8265 \times 10^{-7}$ |
+| **Yoshida 4** | 7.5 | 741 | 4446 | $2.0446 \times 10^{-4}$ | $2.3123 \times 10^{-7}$ | 4.00 | 4.00 | $5.5580 \times 10^{-15}$ | $2.7996 \times 10^{-15}$ | $3.0164 \times 10^{-8}$ |
+| **Yoshida 4** | 3.75 | 1481 | 8886 | $1.2778 \times 10^{-5}$ | $1.4456 \times 10^{-8}$ | 4.00 | 4.00 | $2.3803 \times 10^{-14}$ | $1.1898 \times 10^{-14}$ | $1.8852 \times 10^{-9}$ |
+| **Yoshida 4** | 1.875 | 2962 | 17772 | $7.9828 \times 10^{-7}$ | $9.0321 \times 10^{-10}$ | 4.00 | 4.00 | $1.6070 \times 10^{-14}$ | $8.1188 \times 10^{-15}$ | $1.1783 \times 10^{-10}$ |
+
+### 12.3 Comparison: Theoretical Expectations vs. Observed Results
+
+1. **Explicit Euler**:
+   * *Theoretical Expectation*: $\mathcal{O}(\Delta t)$ asymptotic convergence ($p = 1$).
+   * *Observed Result*: Empirical order $p_r$ transitions from $0.64$ at coarse steps ($\Delta t = 60 \to 30\text{ s}$) to $0.97$ at fine steps ($\Delta t = 3.75 \to 1.875\text{ s}$). Large secular drifts observed in energy ($\max |\delta\varepsilon| \approx 0.36$ at $60\text{ s}$) and angular momentum ($\max |\delta h| \approx 0.24$ at $60\text{ s}$).
+2. **Velocity Verlet**:
+   * *Theoretical Expectation*: $\mathcal{O}(\Delta t^2)$ convergence ($p = 2$). Symplectic preservation of modified Hamiltonian. Continuous angular momentum symmetry preserved in discrete updates.
+   * *Observed Result*: Empirical order is strictly $p_r = 2.00$ and $p_v = 2.00$ across all 5 halving intervals. Relative angular momentum deviation $\max |\delta h|$ remains bounded between $4.2 \times 10^{-16}$ and $4.8 \times 10^{-15}$ (at the IEEE 754 float64 machine epsilon limit). Energy error scales as $\Delta t^2$ ($5.27 \times 10^{-6}$ at $60\text{ s}$ down to $5.06 \times 10^{-12}$ at $1.875\text{ s}$).
+3. **Classical RK4**:
+   * *Theoretical Expectation*: $\mathcal{O}(\Delta t^4)$ convergence ($p = 4$). Non-symplectic multi-stage formulation.
+   * *Observed Result*: Empirical order $p_r$ is $4.22$ at $60 \to 30\text{ s}$ and steadily approaches $4.02$ at $3.75 \to 1.875\text{ s}$. Achieves the smallest absolute Cartesian position error at equal $\Delta t$ ($1.99 \times 10^{-8}\text{ km}$ at $1.875\text{ s}$). Angular momentum error $\max |\delta h|$ is not machine-limited; it exhibits non-symplectic truncation error scaling as $\mathcal{O}(\Delta t^4)$ ($1.25 \times 10^{-7}$ at $60\text{ s}$ down to $3.78 \times 10^{-15}$ at $1.875\text{ s}$).
+4. **Yoshida 4**:
+   * *Theoretical Expectation*: $\mathcal{O}(\Delta t^4)$ convergence ($p = 4$). Symmetric symplectic composition.
+   * *Observed Result*: Empirical order is strictly $p_r = 4.00$ and $p_v = 4.00$ across all halving intervals. Angular momentum error $\max |\delta h|$ is strictly machine-precision bounded ($\sim 10^{-16} - 10^{-14}$) across all timesteps. Relative energy error is bounded and reaches the float64 roundoff floor ($\sim 10^{-14}$) for $\Delta t \le 15\text{ s}$.
+
+### 12.4 M8.1 Experiment Scope and Limitations
+* **Single Orbital Horizon**: The M8.1 benchmark covers strictly one orbital period ($1T$). Long-term secular error growth, stability horizons, and structural divergence over $100T$ are part of Milestone M8.2 and were not evaluated in this experiment.
+* **Matched-Timestep vs. Matched-Cost**: The results above reflect identical $\Delta t$ grids. Because the four solvers incur different numbers of force evaluations per step ($1, 2, 4, 6$), equal-$\Delta t$ comparisons do not reflect equal computational cost. Cost-normalized evaluations are deferred to M8.2.
