@@ -11,8 +11,9 @@ Validates:
 import math
 import pytest
 
+from src.integrators.euler import euler_step
 from src.models.state import State2D
-from src.physics.gravity import MU_EARTH, R_EARTH
+from src.physics.gravity import MU_EARTH, R_EARTH, two_body_derivatives
 from src.physics.analytical import (
     circular_orbit_mean_motion,
     circular_orbit_period,
@@ -285,3 +286,47 @@ class TestCSVSchemas:
         assert "method" in PLANNED_INVARIANT_QUALITY_COLUMNS
         assert "de_character" in PLANNED_INVARIANT_QUALITY_COLUMNS
         assert "dh_character" in PLANNED_INVARIANT_QUALITY_COLUMNS
+
+
+# ==============================================================================
+# 5. ANGULAR MOMENTUM METHODOLOGY REGRESSION TESTS
+# ==============================================================================
+
+class TestAngularMomentumMethodology:
+    """Verifies that the methodology does NOT assume universal discrete angular momentum conservation."""
+
+    def test_euler_step_produces_discrete_angular_momentum_drift(self):
+        """Regression test: continuous central force does NOT imply discrete angular momentum conservation.
+
+        For Explicit Euler:
+            r_{n+1} = r_n + dt * v_n
+            v_{n+1} = v_n + dt * a_n
+            r_{n+1} x v_{n+1} = (r_n x v_n) + dt^2 * (v_n x a_n) != r_n x v_n
+        """
+        r0 = R_EARTH + 400.0
+        mu = MU_EARTH
+        v0 = math.sqrt(mu / r0)
+        s0 = State2D(x=r0, y=0.0, vx=0.0, vy=v0)
+        h0 = specific_angular_momentum(s0)
+
+        dt = 60.0
+        deriv_fn = lambda t, s: two_body_derivatives(t, s, mu=mu)
+        s1 = euler_step(t=0.0, state=s0, derivative_fn=deriv_fn, dt=dt)
+
+        dh = relative_angular_momentum_error(s1, ref_angular_momentum=h0)
+
+        # Expected theoretical drift: dt^2 * (v_n x a_n)_z / h0 = dt^2 * (mu / r0^3) = (n * dt)^2
+        n = circular_orbit_mean_motion(r0, mu=mu)
+        expected_dh = (n * dt) ** 2
+
+        # The error is macroscopic (~4.6e-3), far above floating-point epsilon (~1e-16)
+        assert math.isclose(dh, expected_dh, rel_tol=1e-6)
+        assert dh > 1e-3, "Euler must produce measurable discrete angular momentum drift"
+
+    def test_methodology_measures_rather_than_assumes_angular_momentum_conservation(self):
+        """Verifies that schema and metrics support arbitrary drift classifications for dh."""
+        assert "max_dh_trajectory" in PLANNED_INVARIANT_QUALITY_COLUMNS
+        assert "final_dh_checkpoint" in PLANNED_INVARIANT_QUALITY_COLUMNS
+        assert "dh_character" in PLANNED_INVARIANT_QUALITY_COLUMNS
+        assert "max_dh" in PLANNED_CONVERGENCE_COLUMNS
+        assert "max_relative_angular_momentum_error" in PLANNED_ACCURACY_VS_COST_COLUMNS

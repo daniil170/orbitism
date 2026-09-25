@@ -31,13 +31,13 @@ The systematic comparison investigates five specific scientific questions:
    * *Hypothesis*: When normalized to equal numbers of gravitational force evaluations, high-order methods (RK4 and Yoshida 4) will achieve lower absolute position errors than low-order methods (Euler and Velocity Verlet) at fine-to-moderate budgets, but the computational overhead per step will alter the cost-accuracy crossover points.
 
 3. **Symplectic Invariant Preservation vs. High-Order Dissipation**:
-   * *Hypothesis*: Over long durations ($100T$), non-symplectic integrators (Euler and RK4) will exhibit secular drift in specific orbital energy ($\delta \varepsilon(t) \propto t$), whereas symplectic integrators (Velocity Verlet and Yoshida 4) will constrain energy error within bounded oscillatory bands ($\max |\delta \varepsilon(t)| \le C \Delta t^p$) without secular growth.
+   * *Hypothesis*: For the autonomous Hamiltonian system under consideration and fixed timestep, symplectic methods (Velocity Verlet and Yoshida 4) under appropriate backward error analysis conditions admit interpretation via a nearby modified Hamiltonian and typically exhibit bounded energy error over long horizons, in contrast to the typical secular energy drift of non-symplectic methods (Euler and RK4). This does not imply exact conservation of original energy and is not an unconditional guarantee for arbitrary problems, step sizes, or horizons.
 
 4. **Phase Error vs. Radial Drift Decomposition**:
-   * *Hypothesis*: Across all stable integrators, total Euclidean position error over multi-orbit horizons ($t \gg T$) is dominated by along-track phase error ($e_T(t) \propto t \Delta t^p$), while radial drift ($e_R(t)$) remains bounded for symplectic methods but grows for non-symplectic methods.
+   * *Hypothesis*: Across stable integrators, total Euclidean position error over multi-orbit horizons ($t \gg T$) is dominated by along-track phase error ($e_T(t) \propto t \Delta t^p$), while radial drift ($e_R(t)$) remains bounded for symplectic methods but grows for non-symplectic methods.
 
 5. **Angular Momentum Conservation**:
-   * *Hypothesis*: Because Earth two-body gravity is an exact central force ($\mathbf{r} \times \mathbf{F} = 0$), angular momentum error $\delta h(t)$ is governed primarily by Cartesian roundoff accumulation rather than discretization truncation in all symmetric/consistent formulations.
+   * *Hypothesis*: Continuous physical conservation of angular momentum ($\frac{d\mathbf{h}}{dt} = \mathbf{r} \times \mathbf{F} = 0$) arises from central force symmetry. However, in discrete time, numerical integrators do not necessarily conserve the discrete cross product $\mathbf{r} \times \mathbf{v}$ (for instance, Explicit Euler generates an $\mathcal{O}(h^2 (\mathbf{v}_n \times \mathbf{a}_n))$ step error). M8 empirically measures angular momentum error $\delta h(t)$ across all methods rather than assuming its conservation.
 
 ---
 
@@ -86,7 +86,7 @@ The benchmark evaluates performance across two distinct physical timescales:
 
 | Horizon | Duration ($t_f$) | Orbits | Primary Scientific Purpose |
 | :--- | :--- | :--- | :--- |
-| **Short-Term** | $1T \approx 5553.62\text{ s}$ | $1.0$ | Discretization error convergence rates ($p$), local truncation scaling, clean asymptotic slope measurement. |
+| **Short-Term** | $1T \approx 5553.62\text{ s}$ | $1.0$ | One orbital period, used primarily to characterize discretization error and empirical convergence order. |
 | **Long-Term** | $100T \approx 555255\text{ s}$ | $100.0$ | Invariant drift vs. boundedness, symplectic stability, secular phase accumulation, structural failure (divergence). |
 
 ### Checkpoint Schedule
@@ -107,9 +107,9 @@ $$\Delta t \in \{60.0\text{ s}, 30.0\text{ s}, 15.0\text{ s}, 7.5\text{ s}, 3.75
 
 * **Dyadic Ratios**: Successive step sizes satisfy $\Delta t_k / \Delta t_{k+1} = 2.0$, allowing direct convergence order computation:
   $$p = \log_2\left(\frac{e(\Delta t_k)}{e(\Delta t_{k+1})}\right)$$
-* **Numerical Stability**:
+* **Numerical Regime**:
   * For circular LEO ($T \approx 5554\text{ s}$), $\Delta t = 60\text{ s}$ corresponds to $\approx 92.5$ steps per orbit.
-  * All four integrators remain stable (non-exploding within 1 orbit) at $\Delta t = 60\text{ s}$.
+  * $\Delta t = 60\text{ s}$ is included because it lies within the previously tested regime for the current two-body model.
 * **Dynamic Range**: Spans a factor of 32 in timestep size, providing 5 distinct convergence intervals for regression analysis.
 
 ---
@@ -162,19 +162,20 @@ In orbital mechanics, errors naturally split into orbital shape changes (radial)
 
 ### 7.2 Strict Classification of Invariant Behavior
 
-Scientific analysis must strictly distinguish between three distinct physical/numerical regimes:
+Scientific analysis must strictly distinguish between four distinct physical and numerical aspects:
 
-1. **Mathematical Conservation Property**:
-   * *Symplectic Integrators (Verlet, Yoshida 4)*: Preserve the symplectic 2-form $d\mathbf{q} \wedge d\mathbf{p}$. They exactly conserve a perturbed Hamiltonian $\tilde{H} = H + \Delta t^p H_p + \dots$. Energy error is mathematically bounded for exponentially long times.
-   * *Non-Symplectic Integrators (Euler, RK4)*: Do not preserve phase space volume or symplectic 2-form. Truncation error drives artificial dissipation or artificial energy pumping.
-2. **Floating-Point Roundoff Floor**:
-   * For double-precision IEEE 754 arithmetic, machine epsilon is $\epsilon_{\text{mach}} \approx 2.22 \times 10^{-16}$.
-   * Angular momentum conservation in a central force field is preserved to near machine precision ($\sim 10^{-15} - 10^{-14}$) subject only to Cartesian roundoff.
-   * For Yoshida 4 at small $\Delta t$, energy error reaches a roundoff noise floor of $\sim 10^{-14} - 10^{-13}$.
-3. **Observed Experimental Character**:
-   * Classify energy error time evolution into:
-     * **Secular Drift**: $|\delta \varepsilon(t)| \propto t^\alpha$ ($\alpha \ge 1$, typical of Euler and RK4).
-     * **Bounded Oscillation**: $|\delta \varepsilon(t)| \le M(\Delta t)$, zero mean secular slope (typical of Verlet and Yoshida 4).
+1. **Continuous Physical Conservation**:
+   * For the continuous two-body Keplerian problem, angular momentum is strictly conserved ($\frac{d\mathbf{h}}{dt} = \mathbf{r} \times \mathbf{F}(\mathbf{r}) = \mathbf{0}$) because gravitational acceleration is purely central. Energy is strictly conserved ($\frac{d\varepsilon}{dt} = 0$) because the Hamiltonian is autonomous and time-independent.
+2. **Discrete Numerical Integrator Behavior**:
+   * *Energy Invariance*: For the autonomous Hamiltonian system under consideration and fixed timestep, symplectic methods (Velocity Verlet, Yoshida 4) under appropriate backward error analysis conditions admit interpretation via a nearby modified Hamiltonian $\tilde{H} = H + \Delta t^p H_p + \dots$ and typically exhibit bounded energy error over long horizons, in contrast to the typical secular energy drift of non-symplectic methods (Euler, RK4). This does not imply exact conservation of original continuous energy and is not an unconditional guarantee for arbitrary problems, step sizes, or simulation horizons.
+   * *Angular Momentum Invariance*: Continuous central force symmetry does not automatically imply exact discrete angular momentum preservation for an arbitrary discrete algorithm. For example, a single step of Explicit Euler updates state as $\mathbf{r}_{n+1} = \mathbf{r}_n + h \mathbf{v}_n$ and $\mathbf{v}_{n+1} = \mathbf{v}_n + h \mathbf{a}_n$. The resulting discrete cross product satisfies $\mathbf{r}_{n+1} \times \mathbf{v}_{n+1} = \mathbf{r}_n \times \mathbf{v}_n + h^2 (\mathbf{v}_n \times \mathbf{a}_n)$, yielding a systematic $\mathcal{O}(h^2)$ angular momentum error per step. M8 must empirically measure and track $\delta h(t)$ across each method without presupposing exact conservation.
+3. **Floating-Point Roundoff Limits**:
+   * Double-precision IEEE 754 arithmetic introduces a finite precision floor ($\epsilon_{\text{mach}} \approx 2.22 \times 10^{-16}$). Even when a numerical map algebraically preserves an invariant (e.g. Velocity Verlet on central forces), the accumulated deviation will be bounded by roundoff growth rather than truncation. In non-conservative solvers, truncation error completely dwarfs roundoff.
+4. **Observed Experimental Characterization**:
+   * The benchmark explicitly characterizes the empirical time evolution of invariants as:
+     * **Secular Drift**: $|\delta \varepsilon(t)| \propto t^\alpha$ or $|\delta h(t)| \propto t^\beta$.
+     * **Bounded Oscillation**: Invariant error remains strictly bounded within an amplitude envelope with zero secular trend.
+     * **Roundoff-Limited**: Invariant error stays near the float64 arithmetic precision boundary.
 
 ---
 
@@ -183,6 +184,8 @@ Scientific analysis must strictly distinguish between three distinct physical/nu
 ### 8.1 Force Evaluation Proxy
 
 Wall-clock execution time varies based on CPU architecture, background operating system tasks, and compiler optimizations. Therefore, **the number of gravitational acceleration (force) evaluations** is adopted as the primary, hardware-independent metric of computational cost.
+
+This is an implementation-level force-evaluation cost proxy for the current codebase, not a universal model of wall-clock computational cost.
 
 In the current modular implementation of OrbitSim:
 * **Explicit Euler**: 1 evaluation per external step ($\mathbf{a}_n = \mathbf{a}(\mathbf{r}_n)$).

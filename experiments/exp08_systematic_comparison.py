@@ -46,7 +46,9 @@ DEFAULT_NUM_ORBITS: float = 100.0
 DEFAULT_DT_VALUES: List[float] = [60.0, 30.0, 15.0, 7.5, 3.75, 1.875]
 
 # Force evaluations per outer timestep in CURRENT decoupled implementations:
-# Note: These values reflect the current modular architecture (un-cached)
+# Note: This is an implementation-level force-evaluation cost proxy for the
+# current codebase, not a universal model of wall-clock computational cost.
+# These values reflect the current modular architecture (un-cached)
 # and do not represent theoretical lower bounds for all possible implementations.
 CURRENT_IMPLEMENTATION_EVALS_PER_STEP: Dict[str, int] = {
     "Euler": 1,
