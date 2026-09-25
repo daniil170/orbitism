@@ -305,3 +305,37 @@ def test_yoshida4_phase_drift_linear_and_energy_bounded():
     # Energy error must remain bounded at all steps
     max_de = max(abs(r.energy_error) for r in history)
     assert max_de < 1e-11, f"Energy error exceeded expected bound: {max_de}"
+
+
+def test_yoshida4_circular_orbit_energy_scaling_order_8_and_floor():
+    """Verify observed O(dt^8) energy error scaling for dt in [30, 60]s and roundoff floor.
+
+    On a circular orbit, r0 is a stationary minimum of V_eff(r) (V'_eff = 0).
+    Consequently, energy deviation scales quadratically with coordinate error:
+        Delta_epsilon ~ (Delta_r)^2 ~ (O(dt^4))^2 = O(dt^8).
+    For dt <= 15s, this scaling is cut off by the double-precision roundoff floor.
+    """
+    altitude_km = 400.0
+    r0 = R_EARTH + altitude_km
+    t_period = circular_orbit_period(r0, mu=MU_EARTH)
+    initial_state = create_circular_orbit_state(altitude_km=altitude_km)
+
+    def get_max_de(dt: float) -> float:
+        sim = Simulator(initial_state=initial_state, dt=dt, t_final=t_period, integrator=Yoshida4Integrator)
+        traj = sim.run()
+        hist = compute_decomposed_error_history(sim.times, traj, r0=r0, mu=MU_EARTH)
+        return max(abs(r.energy_error) for r in hist)
+
+    de_60 = get_max_de(60.0)
+    de_30 = get_max_de(30.0)
+    de_07 = get_max_de(7.5)
+
+    ratio = de_60 / de_30
+    p = math.log(ratio) / math.log(2.0)
+
+    # 2^8 = 256.0; require empirical order p in [7.8, 8.2]
+    assert 240.0 <= ratio <= 270.0, f"Expected ratio ~ 256.0, got {ratio:.2f}"
+    assert 7.8 <= p <= 8.2, f"Expected empirical order p ~ 8.0, got {p:.2f}"
+
+    # For small dt (7.5s), error is limited by float64 roundoff floor (~10^-14)
+    assert de_07 < 2e-14, f"Roundoff floor higher than expected: {de_07}"
