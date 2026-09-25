@@ -706,31 +706,92 @@ To eliminate timestep bias, all four methods are compared at identical numbers o
 ### Scientific Analysis & Hypothesis Resolution
 
 #### 1. Tested Facts
-* **Empirical 4th-Order Convergence**: Yoshida 4 demonstrates an exact 4th-order convergence rate ($p = 4.000 \pm 0.002$) for position and velocity over an orbital period across all steps $\Delta t \in [1.875, 60.0]\text{ s}$.
-* **Exact Angular Momentum Invariance**: For all timesteps and all 100 orbits, maximum angular momentum error is bounded by floating-point roundoff:
+* **Empirical 4th-Order Convergence**: На задаче кеплеровского движения на интервале одного орбитального периода Yoshida 4 демонстрирует эмпирический порядок сходимости $p = 4.000 \pm 0.002$ по евклидовой ошибке положения и скорости для сетки шагов $\Delta t \in [1.875, 60.0]\text{ с}$. Отношение ошибок при делении шага пополам строго составляет $16.00 \pm 0.02$.
+* **Angular Momentum Invariance Within Measured Floating-Point Precision**: На интервале 100 орбит максимальное относительное отклонение удельного углового момента $\delta h(t) = (h(t) - h_0)/|h_0|$ не превышало уровня погрешности вычислений с плавающей точкой двойной точности (IEEE 754 float64):
   $$\max_{t \in [0, 100T]} |\delta h(t)| \le 1.12 \times 10^{-13}$$
-  confirming that the composition preserves central-force angular momentum to machine precision.
-* **Bounded Energy Envelope Without Secular Drift**: Unlike RK4 (which exhibits strictly secular monotonic energy decrease $\dot{\varepsilon} < 0$), Yoshida 4 exhibits bounded, non-growing periodic oscillations with an amplitude scaling as $\mathcal{O}(\Delta t^4)$. At $\Delta t = 60\text{ s}$, $\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$, and final deviation $\delta\varepsilon(100T) \approx 7.01 \times 10^{-15}$.
-* **Drastic Reduction in Trajectory Error Relative to Verlet**: At $\Delta t = 60\text{ s}$, Yoshida 4 reduces 100T position error from $6,280.6\text{ km}$ (Velocity Verlet) down to $83.8\text{ km}$ ($75\times$ improvement), and at $\Delta t = 30\text{ s}$ down to $5.2\text{ km}$ ($311\times$ improvement).
+  Это подтверждает теоретическое свойство сохранения момента импульса симплектической схемы в центральном поле в пределах конечной машинной точности.
+* **Bounded Energy Envelope Without Secular Drift**: В отличие от несимплектического RK4 (демонстрирующего строго вековую монотонную диссипацию энергии $\dot{\varepsilon} < 0$), у Yoshida 4 погрешность энергии не накапливается со временем и остаётся строго ограниченной на всём горизонте 100 орбит. При $\Delta t = 60\text{ с}$ максимальное отклонение энергии по всей траектории составляет $\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$, а в конечной точке $100T$ отклонение равно $+7.01 \times 10^{-15}$.
+* **Energy Error Scaling Characteristics on Circular Orbit**: В силу того, что круговая орбита является стационарной точкой (минимумом) эффективного одномерного потенциала $V_{\text{eff}}(r) = \frac{h^2}{2 r^2} - \frac{\mu}{r}$ с $V'_{\text{eff}}(r_0) = 0$, вариация энергии в окрестности $r_0$ квадратична по отношению к радиальному отклонению $\Delta r$:
+  $$\Delta\varepsilon \approx \frac{1}{2} V''_{\text{eff}}(r_0) (\Delta r)^2 + \frac{1}{2} (\dot{r})^2$$
+  Поскольку амплитуда радиальных осцилляций 4-го порядка составляет $\Delta r \sim \mathcal{O}(\Delta t^4)$, максимальное отклонение энергии в диапазоне относительно крупных шагов ($\Delta t \in [30, 120]\text{ с}$) сжимается сверхбыстро: $\max |\delta\varepsilon| \propto \Delta t^8$ (уменьшение в $\approx 256$ раз при каждом делении шага пополам). При шагах $\Delta t \le 15\text{ с}$ амплитуда упирается в машинный порог округления ($\approx 10^{-14} - 10^{-13}$) и перестаёт убывать. Таким образом, экспериментальные данные для круговой орбиты показывают режим $\mathcal{O}(\Delta t^8)$ с последующим переходом в roundoff floor, а не простую степенную огибающую $\mathcal{O}(\Delta t^4)$.
+* **Linear Phase Error Growth**: Вдольтраекторная ошибка по фазе $\Delta\theta(t) = \theta_{\text{num}}(t) - n t$ растёт строго линейно во времени $\Delta\theta(t) \propto t \cdot \Delta t^4$ ($\Delta\theta(k T) \approx k \cdot \Delta\theta(1 T)$ с точностью $< 0.1\%$). Симплектичность метода сохраняет фазовый объём и первые интегралы, но не устраняет систематическое численное возмущение частоты $\Delta n \sim \mathcal{O}(\Delta t^4)$, поэтому симплектический интегратор сохраняет вековой фазовый дрейф.
+* **Significant Trajectory Error Reduction Relative to Verlet**: При $\Delta t = 60\text{ с}$ на 100 витках Yoshida 4 снижает накопленную ошибку положения с $6,280.6\text{ км}$ (Velocity Verlet) до $83.8\text{ км}$ (в 75 раз), а при $\Delta t = 30\text{ с}$ — до $5.2\text{ км}$ (в 311 раз).
 
-#### 2. Experimental Observations & Trade-Offs
-* **The Accuracy vs. Invariant Trade-Off (Cost-Normalized Perspective)**:
-  - At equal computational budget, **RK4 produces smaller instantaneous Cartesian state error** $e_r(100T)$ than Yoshida 4 (e.g. $10.99\text{ km}$ vs $83.83\text{ km}$ at ~55k evals, and $0.356\text{ km}$ vs $5.24\text{ km}$ at ~111k evals). This occurs because for circular orbits, RK4's leading error constant in along-track phase is smaller, and RK4 operates at a smaller timestep $\Delta t = \frac{4}{6}\Delta t_{\text{Y4}}$ for the same budget.
-  - Conversely, **Yoshida 4 preserves physical invariants far more effectively**: at ~55k evals, Yoshida 4 energy error is 4 orders of magnitude smaller ($4.78 \times 10^{-10}$ vs $3.31 \times 10^{-6}$) and angular momentum error is 8 orders of magnitude smaller ($1.53 \times 10^{-14}$ vs $1.66 \times 10^{-6}$).
-  - RK4 exhibits a **secular energy dissipation** that accumulates linearly in time ($|\delta\varepsilon| \propto t$), whereas Yoshida 4 energy error is strictly oscillatory and bounded.
-* **Distinction between Checkpoint Value and Trajectory Maximum**:
-  - In symplectic integrators (Verlet and Yoshida 4), the checkpoint value at $t = k T$ reflects a specific phase in the bounded oscillation and can be near machine precision ($\delta\varepsilon(100T) \approx 7.01 \times 10^{-15}$ for Yoshida 4 at $60\text{ s}$), while the trajectory maximum is $\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$.
-  - In non-symplectic RK4, the checkpoint value equals the trajectory maximum ($|\delta\varepsilon(100T)| \equiv \max |\delta\varepsilon| = 2.52 \times 10^{-5}$) because energy drifts secularly without oscillation.
+#### 2. Experimental Observations & Trade-Offs (Cost-Normalized Perspective)
+* **Стоимость вычислений текущей реализации**:
+  - Явный Эйлер: 1 вычисление ускорения на шаг.
+  - Velocity Verlet: 2 вычисления ускорения на шаг.
+  - Классический RK4: 4 вычисления ускорения на шаг.
+  - Текущая реализация Yoshida 4: 6 вычислений ускорения на шаг (3 независимых substep Verlet без межшагового кэширования). Это свойство текущей модульной архитектуры, а не теоретическая нижняя граница метода 4-го порядка.
+* **Accuracy vs. Invariants Trade-Off**:
+  - При равном бюджете вычислений силы (например, ~55,540 вызовов ускорения на $100 T$):
+    - **RK4 ($\Delta t = 40\text{ с}$)** даёт меньшую мгновенную декартову ошибку положения $e_r(100T) = 10.99\text{ км}$ (против $83.83\text{ км}$ у Yoshida 4 с $\Delta t = 60\text{ с}$), так как может использовать меньший шаг и имеет меньшую константу фазовой ошибки на круговой орбите;
+    - **Yoshida 4 ($\Delta t = 60\text{ с}$)** на 4 порядка точнее сохраняет энергию ($\max |\delta\varepsilon| = 4.78 \times 10^{-10}$ против $3.31 \times 10^{-6}$) и на 8 порядков точнее сохраняет угловой момент ($1.53 \times 10^{-14}$ против $1.66 \times 10^{-6}$);
+    - RK4 демонстрирует монотонную вековую диссипацию энергии ($\delta\varepsilon(t) \propto -t$), приводящую к медленному сжатию орбиты, в то время как у Yoshida 4 энергия строго осциллирует без векового тренда.
+  - Ни один метод не является безусловным победителем: выбор между RK4 и Yoshida 4 зависит от физической цели — мгновенная точность траектории на ограниченном интервале (RK4) или сохранение геометрических инвариантов и отсутствие диссипации в консервативных системах (Yoshida 4).
 
 #### 3. Hypothesis Resolution
-* **$H_{\text{M7}}$ (Simultaneous High Order & Symplectic Preservation) — SUPPORTED**:
-  Yoshida 4 successfully combines 4th-order rate of convergence ($p \approx 4$) with exact symplecticity (bounded energy oscillation, machine-precision angular momentum, absence of phase winding).
-* **Neither Integrator is a Universal "Winner"**:
-  - For short/medium-term orbital prediction where pointwise Cartesian accuracy per evaluation is paramount, RK4 achieves lower trajectory error.
-  - For long-term conservative dynamics, orbital stability, and invariant preservation where energy dissipation or spiral collapse is forbidden, Yoshida 4 provides structural geometric correctness that RK4 cannot guarantee.
+* **$H_{\text{M7}}$ (Simultaneous High Order & Symplectic Preservation) — SUPPORTED (с оговорками о фазовом дрейфе и стоимости)**:
+  Yoshida 4 подтвердил способность одновременно обеспечивать 4-й порядок сходимости ($p \approx 4.0$) и сохранение симплектической структуры (ограниченность осцилляций энергии, машинная точность углового момента, отсутствие фазового наматывания). Метод не устраняет фазовый дрейф ($\Delta\theta \propto t$) и требует в 1.5 раза больше вычислений силы на шаг, чем RK4, в текущей реализации.
 
 ### Scientific Limitations of M7
-1. **Model Scope**: Validated on an unperturbed 2D Keplerian two-body circular orbit.
-2. **Does NOT Prove Infinite-Time Stability**: Boundedness is empirically demonstrated for 100 orbital periods ($~6.4$ days). Over astronomical timescales ($10^6$ orbits), roundoff error accumulation may slowly degrade the invariant.
-3. **Does NOT Outperform RK4 in Trajectory Error at Matched Cost**: For fixed computational budgets, RK4 maintains lower Cartesian position error on circular orbits over 100T.
-4. **Does NOT Prevent Along-Track Phase Drift**: Like all fixed-step symplectic integrators, Yoshida 4 introduces a tiny frequency error $\Delta n \propto \Delta t^4$, causing along-track phase error $\Delta\theta$ to grow linearly with time $t$.
+1. **Горизонт доказанности**: Ограничен строго 100 орбитальными периодами (~6.4 суток) в консервативной ньютоновской задаче двух тел. Поведение на временах $10^4 - 10^7$ витков не исследовалось и не гарантируется из-за накопления ошибок округления floating-point.
+2. **Физическая модель**: Результаты не распространяются на неконсервативные силы (атмосферное торможение), реальные возмущения ($J_2$, притяжение Луны/Солнца) или алгоритмы с адаптивным шагом без специализированных симплектических трансформаций времени.
+3. **Не доказывает превосходства по декартовой ошибке**: При нормированном вычислительном бюджете RK4 показывает меньшую ошибку декартова положения на исследованной круговой орбите.
+4. **Наличие фазового дрейфа**: Симплектичность не устраняет вдольтраекторную задержку по фазе ($\Delta\theta \propto t \cdot \Delta t^4$).
+5. **Reference**: Все ошибки вычислены строго относительно точного аналитического решения круговой кеплеровской орбиты ($\mathbf{r}_{\text{exact}}(t), \mathbf{v}_{\text{exact}}(t)$), а не относительно приближённого численного решения.
+
+---
+
+## 10. M8 — Systematic Accuracy / Cost / Invariant Comparison (Design & Preparation)
+
+> [!NOTE] Architectural Preparation Only
+> Milestone M8 is currently in the design and planning phase. No experimental runs or result datasets have been generated yet.
+
+### Research Question
+> *«Как сравниваются Euler, RK4, Velocity Verlet и Yoshida 4 при одинаковом computational budget, и как выбор критерия ошибки меняет вывод о качестве численного метода?»*
+
+### Planned Comparison Axes
+
+1. **Accuracy vs. Timestep ($\Delta t$)**:
+   - Анализ зависимостей ошибок положения $e_r(\Delta t)$, скорости $e_v(\Delta t)$, радиуса $\Delta r(\Delta t)$ и фазы $\Delta\theta(\Delta t)$ для четырёх решателей на единой сетке шагов $\Delta t \in [1.875, 60.0]\text{ с}$.
+   - Подтверждение теоретических порядков сходимости: Euler ($p = 1$), Velocity Verlet ($p = 2$), RK4 ($p = 4$), Yoshida 4 ($p = 4$).
+
+2. **Accuracy vs. Computational Cost**:
+   - Нормировка точности по суммарному числу вычислений гравитационного ускорения ($N_{\text{eval}}$).
+   - Стоимость шага в текущих реализациях OrbitSim:
+     - Euler: 1 force evaluation / step
+     - Velocity Verlet: 2 force evaluations / step
+     - RK4: 4 force evaluations / step
+     - Yoshida 4 (current decoupled implementation): 6 force evaluations / step
+   - Сравнение на фиксированных вычислительных бюджетах ($~55\text{k}, ~111\text{k}, ~222\text{k}, ~444\text{k}$ вычислений ускорения за 100 орбит).
+
+3. **Invariant Quality (Preservation of First Integrals)**:
+   - Детальная классификация энергетической погрешности:
+     - Максимальное отклонение по всей траектории ($\max |\delta\varepsilon|$) vs. финальное отклонение на чекпоинте ($\delta\varepsilon(100T)$);
+     - Характер эволюции: вековая монотонная диссипация ($\delta\varepsilon \propto -t$ у RK4) vs. ограниченные квазипериодические осцилляции без векового тренда (у Verlet и Yoshida 4).
+   - Поведение удельного углового момента $\delta h$: сохранение с точностью до машинного округления ($\sim 10^{-14} - 10^{-13}$) у симплектических методов против монотонного дрейфа у несимплектических.
+
+4. **Phase Accuracy vs. Orbital Shape**:
+   - Разделение радиального геометрического искажения ($\Delta r$) и вдольтраекторного фазового сдвига ($\Delta\theta$).
+   - Исследование частотного сдвига $\Delta n$ и доказательство того, что фазовый дрейф не исчезает в симплектических методах, а растёт линейно во времени $\Delta\theta \approx \Delta n \cdot t$.
+
+### Design Decision on Reference Trajectory
+* **Научное обоснование**:
+  1. Для исследуемой невозмущённой круговой кеплеровской орбиты ($r_0 = \text{const}, \mu = \text{const}$) точное математическое решение известно в замкнутом аналитическом виде:
+     $$\mathbf{r}_{\text{exact}}(t) = [r_0 \cos(nt), r_0 \sin(nt)], \quad \mathbf{v}_{\text{exact}}(t) = [-r_0 n \sin(nt), r_0 n \cos(nt)]$$
+     где $n = \sqrt{\mu / r_0^3}$.
+  2. Аналитическое решение содержит **нулевую ошибку дискретизации** и ограничено исключительно точностью вычисления элементарных функций `math.cos`, `math.sin` по стандарту IEEE 754 ($\sim 10^{-16}$).
+  3. Любое численное эталонное решение (например, методом Рунге-Кутты 8-го порядка или методом Штёрмера с микрошагом $\Delta t < 0.01\text{ с}$) неизбежно вносит собственную ошибку аппроксимации, фазовый сдвиг и вычислительную погрешность накопления округлений.
+* **Решение для M8**:
+  Для базовой круговой орбиты в M8 **сохраняется точное аналитическое решение в качестве эталона**. Независимый высокоточный численный эталон (например, RK8(7) Дормана-Принса) будет введён только на последующих этапах при переходе к возмущённым или эксцентричным орбитам, где аналитическое замкнутое решение отсутствует.
+
+### Multi-Criteria Fair Comparison (No False Rankings)
+В M8 исключается объявление одного "абсолютного метода-победителя". Будет проведён Парето-анализ по двум независимым осям:
+* **Ось 1**: Мгновенная точность траектории при заданном вычислительном бюджете (Cartesian error per evaluation).
+* **Ось 2**: Геометрическая инвариантность и отсутствие диссипации при длительном моделировании консервативной динамики (Invariant fidelity over time).
+
+### What is NOT Yet Implemented in M8
+- Полномасштабный вычислительный прогон скрипта `experiments/exp08_systematic_comparison.py`.
+- Генерация файлов результатов M8 в директории `results/`.
+- Любые изменения физической модели, добавление возмущений, 3D или адаптивного шага.

@@ -203,7 +203,6 @@ In our decoupled architecture (`src/integrators/yoshida4.py`), the integrator is
 
 * **Local Truncation Error (LTE)**: $\mathcal{O}(h^5)$ per step.
 * **Global Truncation Error (GTE)**: $\mathcal{O}(h^4)$ over fixed duration $[0, T]$.
-* **Order of Accuracy**: Fourth order ($p = 4$).
-* **Symplecticity**: As a composition of symplectic maps, $S_4(h)$ is strictly canonical and preserves the phase-space 2-form $d\mathbf{p} \wedge d\mathbf{q}$.
-* **Shadow Hamiltonian**: By backward error analysis, Yoshida 4 exactly integrates a shadow Hamiltonian $\widetilde{\mathcal{H}} = \mathcal{H} + \mathcal{O}(h^4)$. Relative energy error $\delta\varepsilon$ oscillates within a tight envelope of width $\mathcal{O}(h^4)$ without secular drift.
-* **Central Force Angular Momentum**: Because each Velocity Verlet substep preserves angular momentum to machine precision, the full Yoshida 4 step conserves $h_z$ down to machine roundoff ($|\delta h| < 10^{-14}$).
+* **Symplecticity & Phase-Space Volume**: As a composition of canonical symplectic mappings, the discrete update $S_4(h)$ strictly preserves the canonical symplectic 2-form $\omega = d\mathbf{p} \wedge d\mathbf{q}$ and phase-space volume ($\det J \equiv 1$). This is an exact mathematical property of the map.
+* **Shadow Hamiltonian & Energy**: By backward error analysis, Yoshida 4 exactly tracks the trajectory of a perturbed shadow Hamiltonian $\widetilde{\mathcal{H}} = \mathcal{H} + \mathcal{O}(h^4)$. Consequently, energy error does not experience secular growth, but oscillates within a bounded envelope. On an unperturbed circular orbit, because $r_0$ is a stationary minimum of the effective potential $V_{\text{eff}}(r)$, the energy deviation scales as $(\Delta r)^2 \sim \mathcal{O}(h^8)$ for large steps before reaching the machine precision roundoff floor ($\sim 10^{-14}$).
+* **Central Force Angular Momentum**: Specific angular momentum $h_z$ is theoretically an exact invariant for central forces in each symmetric Verlet substep; in numerical computation it is preserved down to double-precision floating-point roundoff ($|\delta h| < 10^{-13}$).

@@ -65,7 +65,7 @@ def cost_normalized_rows():
 def convergence_rows():
     """Load exp07_convergence.csv rows."""
     assert CONVERGENCE_PATH.exists(), f"Missing dataset: {CONVERGENCE_PATH}"
-    with open(CONVERCE_PATH if False else CONVERGENCE_PATH, "r", encoding="utf-8") as f:
+    with open(CONVERGENCE_PATH, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         return list(reader)
 

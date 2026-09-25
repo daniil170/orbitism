@@ -242,3 +242,66 @@ def test_yoshida4_simulator_integration():
     for s1, s2 in zip(traj_cls, traj_inst):
         assert math.isclose(s1.x, s2.x, rel_tol=1e-14)
         assert math.isclose(s1.y, s2.y, rel_tol=1e-14)
+
+
+def test_yoshida4_substep_time_sequence_and_negative_step():
+    """Verify exact substep time sequence and negative substep behavior."""
+    times_seen = []
+
+    def tracking_deriv(t: float, s: State2D) -> StateDerivative2D:
+        times_seen.append(t)
+        return two_body_derivatives(t, s, mu=MU_EARTH)
+
+    state = create_circular_orbit_state(altitude_km=400.0)
+    t0 = 100.0
+    dt = 30.0
+    _ = yoshida4_step(t0, state, tracking_deriv, dt)
+
+    h1 = W1 * dt
+    h0 = W0 * dt
+
+    # Substep 1 evaluates at t0 and t0 + h1
+    # Substep 2 evaluates at t0 + h1 and (t0 + h1) + h0
+    # Substep 3 evaluates at t0 + h1 + h0 and (t0 + h1 + h0) + h1 = t0 + dt
+    expected_times = [
+        t0,
+        t0 + h1,
+        t0 + h1,
+        t0 + h1 + h0,
+        t0 + h1 + h0,
+        t0 + dt,
+    ]
+
+    assert len(times_seen) == 6
+    for seen, exp in zip(times_seen, expected_times):
+        assert math.isclose(seen, exp, rel_tol=1e-14, abs_tol=1e-14)
+
+
+def test_yoshida4_phase_drift_linear_and_energy_bounded():
+    """Verify that phase error grows linearly (does NOT vanish) while energy is bounded."""
+    altitude_km = 400.0
+    r0 = R_EARTH + altitude_km
+    t_period = circular_orbit_period(r0, mu=MU_EARTH)
+    initial_state = create_circular_orbit_state(altitude_km=altitude_km)
+
+    dt = 30.0
+    sim = Simulator(
+        initial_state=initial_state,
+        dt=dt,
+        t_final=5.0 * t_period,
+        integrator=Yoshida4Integrator,
+    )
+    trajectory = sim.run()
+    history = compute_decomposed_error_history(sim.times, trajectory, r0=r0, mu=MU_EARTH)
+
+    # Find records near 1T and 5T
+    rec_1t = min(history, key=lambda r: abs(r.t - t_period))
+    rec_5t = min(history, key=lambda r: abs(r.t - 5.0 * t_period))
+
+    # Phase error must grow roughly linearly with time
+    ratio = rec_5t.delta_theta / rec_1t.delta_theta
+    assert math.isclose(ratio, 5.0, rel_tol=0.01), f"Expected phase error growth ratio ~ 5.0, got {ratio}"
+
+    # Energy error must remain bounded at all steps
+    max_de = max(abs(r.energy_error) for r in history)
+    assert max_de < 1e-11, f"Energy error exceeded expected bound: {max_de}"
