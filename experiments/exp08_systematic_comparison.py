@@ -132,6 +132,29 @@ PLANNED_LONG_TERM_CHECKPOINTS_COLUMNS: List[str] = [
 ]
 
 
+DEFAULT_COST_NORMALIZED_BUDGETS: List[int] = [27768, 55536, 111072]
+
+PLANNED_COST_NORMALIZED_COLUMNS: List[str] = [
+    "method",
+    "force_eval_budget",
+    "force_evals_actual",
+    "num_steps",
+    "dt",
+    "final_time",
+    "final_position_error_km",
+    "final_velocity_error_km_s",
+    "max_position_error_km",
+    "max_velocity_error_km_s",
+    "final_radial_error_km",
+    "max_radial_error_km",
+    "final_phase_error_rad",
+    "max_abs_phase_error_rad",
+    "final_relative_energy_error",
+    "max_abs_relative_energy_error",
+    "final_relative_angular_momentum_error",
+    "max_abs_relative_angular_momentum_error",
+]
+
 PLANNED_ACCURACY_VS_COST_COLUMNS: List[str] = [
     "budget_name",
     "target_evals",
@@ -800,14 +823,252 @@ def run_planned_long_term_fixed_dt() -> Tuple[List[Dict[str, Any]], List[Dict[st
     return run_long_term_fixed_dt_study()
 
 
-def run_planned_accuracy_vs_cost() -> None:
-    """Planned study 2b (M8.2b): Error metrics vs. force evaluations across 4 solvers.
+def run_cost_normalized_study(
+    budgets: Optional[List[int]] = None,
+    num_orbits: float = DEFAULT_NUM_ORBITS,
+    altitude_km: float = DEFAULT_ALTITUDE_KM,
+    mu: float = MU_EARTH,
+    r_earth: float = R_EARTH,
+) -> List[Dict[str, Any]]:
+    """Execute Study 2b (M8.2b): Cost-normalized comparison across 4 solvers over 100 orbits.
 
-    TODO (M8.2b): Execute matched budget runs and generate Pareto-optimal efficiency curves.
+    Evaluates performance trade-offs at matched computational budgets (force evaluations).
+
+    Args:
+        budgets: List of exact force evaluation budgets divisible by 1, 2, 4, 6.
+        num_orbits: Orbital horizon (default: 100.0).
+        altitude_km: Orbital altitude in km (default: 400.0).
+        mu: Gravitational parameter (default: MU_EARTH).
+        r_earth: Earth radius in km (default: R_EARTH).
+
+    Returns:
+        List of cost-normalized records (one per solver-budget pair).
     """
-    raise NotImplementedError(
-        "M8.2b execution pending. Cost-normalized comparison is deferred."
+    if budgets is None:
+        budgets = list(DEFAULT_COST_NORMALIZED_BUDGETS)
+
+    r0 = r_earth + altitude_km
+    t_orbit = circular_orbit_period(r0, mu=mu)
+    t_final = num_orbits * t_orbit
+    initial_state = create_circular_orbit_state(
+        altitude_km=altitude_km, mu=mu, r_earth=r_earth
     )
+
+    records: List[Dict[str, Any]] = []
+
+    for budget in budgets:
+        for method_name, integrator_cls in SOLVER_REGISTRY.items():
+            evals_per_step = CURRENT_IMPLEMENTATION_EVALS_PER_STEP[method_name]
+            assert budget % evals_per_step == 0, (
+                f"Budget {budget} not divisible by {evals_per_step} for {method_name}"
+            )
+            num_steps = budget // evals_per_step
+            dt = t_final / num_steps
+
+            sim = Simulator(initial_state=initial_state, mu=mu, integrator=integrator_cls)
+            trajectory = sim.run(dt=dt, num_steps=num_steps)
+            times = [i * dt for i in range(num_steps + 1)]
+            sim.times = times
+
+            actual_force_evals = num_steps * evals_per_step
+            assert actual_force_evals == budget, (
+                f"Budget mismatch: {actual_force_evals} != {budget}"
+            )
+
+            history = compute_decomposed_error_history(
+                times=times, trajectory=trajectory, r0=r0, mu=mu
+            )
+
+            final_record = history[-1]
+            assert abs(final_record.t - t_final) < 1e-11, (
+                f"Final time mismatch: {final_record.t} vs {t_final}"
+            )
+
+            max_pos_err = max(h.position_error for h in history)
+            max_vel_err = max(h.velocity_error for h in history)
+            max_rad_err = max(abs(h.delta_r) for h in history)
+            max_abs_phase_err = max(abs(h.delta_theta) for h in history)
+            max_abs_energy_err = max(abs(h.energy_error) for h in history)
+            max_abs_ang_mom_err = max(abs(h.angular_momentum_error) for h in history)
+
+            records.append({
+                "method": method_name,
+                "force_eval_budget": budget,
+                "force_evals_actual": actual_force_evals,
+                "num_steps": num_steps,
+                "dt": dt,
+                "final_time": final_record.t,
+                "final_position_error_km": final_record.position_error,
+                "final_velocity_error_km_s": final_record.velocity_error,
+                "max_position_error_km": max_pos_err,
+                "max_velocity_error_km_s": max_vel_err,
+                "final_radial_error_km": abs(final_record.delta_r),
+                "max_radial_error_km": max_rad_err,
+                "final_phase_error_rad": final_record.delta_theta,
+                "max_abs_phase_error_rad": max_abs_phase_err,
+                "final_relative_energy_error": final_record.energy_error,
+                "max_abs_relative_energy_error": max_abs_energy_err,
+                "final_relative_angular_momentum_error": final_record.angular_momentum_error,
+                "max_abs_relative_angular_momentum_error": max_abs_ang_mom_err,
+            })
+
+    return records
+
+
+def save_cost_normalized_csv(records: List[Dict[str, Any]], filepath: Path) -> None:
+    """Save cost-normalized comparison records to CSV."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=PLANNED_COST_NORMALIZED_COLUMNS, lineterminator="\n"
+        )
+        writer.writeheader()
+        for r in records:
+            writer.writerow(r)
+
+
+def print_cost_normalized_table(records: List[Dict[str, Any]], t_final: float) -> None:
+    """Print ASCII formatted table of cost-normalized results."""
+    print("=" * 155)
+    print("OrbitSim M8.2b: Cost-Normalized Comparison (100 Orbits, Matched Force Evaluations)")
+    print(f"Physical Duration: T_final = {t_final:.3f} s (~{t_final / 86400.0:.2f} days), Altitude = 400 km")
+    print("=" * 155)
+    header = (
+        f"{'Budget':>7} | {'Method':<16} | {'Steps':>6} | {'dt (s)':>8} | "
+        f"{'Final Pos Err (km)':>18} | {'Max Pos Err (km)':>17} | "
+        f"{'Final Rad Err (km)':>18} | {'Max |δε|':>11} | {'Max |δh|':>11} | {'Final Δθ (rad)':>15}"
+    )
+    print(header)
+    print("-" * 155)
+    for r in records:
+        print(
+            f"{r['force_eval_budget']:>7d} | {r['method']:<16} | {r['num_steps']:>6d} | {r['dt']:>8.3f} | "
+            f"{r['final_position_error_km']:>18.4e} | {r['max_position_error_km']:>17.4e} | "
+            f"{r['final_radial_error_km']:>18.4e} | {r['max_abs_relative_energy_error']:>11.4e} | "
+            f"{r['max_abs_relative_angular_momentum_error']:>11.4e} | {r['final_phase_error_rad']:>15.4e}"
+        )
+    print("=" * 155)
+
+
+def plot_cost_normalized_results(
+    records: List[Dict[str, Any]], output_dir: Path
+) -> List[Path]:
+    """Generate cost-normalized comparison plots for M8.2b.
+
+    Creates:
+    1. exp08_cost_normalized_position_error.png (final position error vs. budget)
+    2. exp08_cost_normalized_velocity_error.png (final velocity error vs. budget)
+    3. exp08_cost_normalized_energy.png (max relative energy error vs. budget)
+    4. exp08_cost_normalized_angular_momentum.png (max relative angular momentum error vs. budget)
+    5. exp08_cost_normalized_phase.png (final absolute phase error vs. budget)
+    """
+    os.environ.setdefault("MPLCONFIGDIR", str(PROJECT_ROOT / ".cache"))
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    generated_plots: List[Path] = []
+
+    methods = ["Euler", "Velocity Verlet", "RK4", "Yoshida 4"]
+    colors = {
+        "Euler": "#d95f02",
+        "Velocity Verlet": "#7570b3",
+        "RK4": "#1b9e77",
+        "Yoshida 4": "#e7298a",
+    }
+    markers = {
+        "Euler": "s",
+        "Velocity Verlet": "^",
+        "RK4": "o",
+        "Yoshida 4": "D",
+    }
+
+    by_method: Dict[str, List[Dict[str, Any]]] = {}
+    for r in records:
+        by_method.setdefault(r["method"], []).append(r)
+    for m in by_method:
+        by_method[m].sort(key=lambda x: x["force_eval_budget"])
+
+    budgets = sorted(list({r["force_eval_budget"] for r in records}))
+
+    plot_configs = [
+        (
+            "final_position_error_km",
+            "exp08_cost_normalized_position_error.png",
+            "Final Position Error $e_r(100T)$ [km]",
+            "M8.2b: Final Position Error vs. Force Evaluation Budget (100 Orbits)",
+        ),
+        (
+            "final_velocity_error_km_s",
+            "exp08_cost_normalized_velocity_error.png",
+            "Final Velocity Error $e_v(100T)$ [km/s]",
+            "M8.2b: Final Velocity Error vs. Force Evaluation Budget (100 Orbits)",
+        ),
+        (
+            "max_abs_relative_energy_error",
+            "exp08_cost_normalized_energy.png",
+            "Max Relative Energy Error $\\max |\\delta\\varepsilon|$",
+            "M8.2b: Energy Deviation vs. Force Evaluation Budget (100 Orbits)",
+        ),
+        (
+            "max_abs_relative_angular_momentum_error",
+            "exp08_cost_normalized_angular_momentum.png",
+            "Max Relative Angular Momentum Error $\\max |\\delta h|$",
+            "M8.2b: Angular Momentum Deviation vs. Force Evaluation Budget (100 Orbits)",
+        ),
+        (
+            "max_abs_phase_error_rad",
+            "exp08_cost_normalized_phase.png",
+            "Max Absolute Phase Error $\\max |\\Delta\\theta|$ [rad]",
+            "M8.2b: Phase Error vs. Force Evaluation Budget (100 Orbits)",
+        ),
+    ]
+
+    for field_name, filename, ylabel, title in plot_configs:
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
+        for method in methods:
+            series = by_method.get(method, [])
+            if not series:
+                continue
+            x_vals = [s["force_eval_budget"] for s in series]
+            raw_y = [abs(s[field_name]) for s in series]
+            y_vals = [max(v, 1e-16) for v in raw_y]
+
+            ax.loglog(
+                x_vals,
+                y_vals,
+                label=method,
+                color=colors[method],
+                marker=markers[method],
+                linewidth=2.0,
+                markersize=8,
+            )
+
+        ax.set_title(title, fontsize=13, fontweight="bold")
+        ax.set_xlabel("Computational Budget [Force Evaluations]", fontsize=11)
+        ax.set_ylabel(ylabel, fontsize=11)
+        ax.set_xticks(budgets)
+        ax.set_xticklabels([f"{b:,}" for b in budgets])
+        ax.grid(True, which="both", ls="--", alpha=0.5)
+        ax.legend(loc="best", fontsize=10, framealpha=0.9)
+        fig.tight_layout()
+
+        out_path = output_dir / filename
+        fig.savefig(out_path)
+        plt.close(fig)
+        generated_plots.append(out_path)
+
+    return generated_plots
+
+
+def run_planned_accuracy_vs_cost() -> List[Dict[str, Any]]:
+    """Execute Study 2b (M8.2b): Error metrics vs. force evaluations across 4 solvers.
+
+    Returns:
+        List of cost-normalized records.
+    """
+    return run_cost_normalized_study()
 
 
 def run_planned_invariant_quality_comparison() -> None:
@@ -821,7 +1082,7 @@ def run_planned_invariant_quality_comparison() -> None:
 
 
 def main() -> None:
-    """Execute Milestone M8.1 and M8.2a experimental pipelines."""
+    """Execute Milestone M8.1, M8.2a, and M8.2b experimental pipelines."""
     print("=" * 80)
     print("OrbitSim — Milestone M8: Systematic Solver Benchmark")
     print("=" * 80)
@@ -863,9 +1124,23 @@ def main() -> None:
     for p in lt_plots:
         print(f"  Plot: {p.resolve()}")
 
+    # Phase 3: M8.2b Cost-Normalized Study
+    print("\n>>> Phase 3: Running Milestone M8.2b (Cost-Normalized Comparison, 100 Orbits)...")
+    cost_records = run_cost_normalized_study()
+    print_cost_normalized_table(cost_records, t_final=t_100)
+
+    cost_csv = results_dir / "exp08_cost_normalized.csv"
+    save_cost_normalized_csv(cost_records, cost_csv)
+    print(f"Cost-normalized results saved to: {cost_csv.resolve()} ({len(cost_records)} rows)")
+
+    print("Generating M8.2b cost-normalized plots...")
+    cost_plots = plot_cost_normalized_results(cost_records, results_dir)
+    for p in cost_plots:
+        print(f"  Plot: {p.resolve()}")
+
     print("\n" + "=" * 80)
-    print("Milestones M8.1 and M8.2a Execution Complete.")
-    print("Milestone M8.2b (Cost-Normalized Comparison) is deferred and NOT executed.")
+    print("Milestones M8.1, M8.2a, and M8.2b Execution Complete.")
+    print("Milestone M8.3 is deferred and NOT executed.")
     print("=" * 80)
 
 

@@ -430,4 +430,76 @@ All results are reproducible by executing the standardized suite with fixed init
 
 ### 13.4 M8.2a Scope and Limitations
 * **Fixed-dt Only**: All runs use fixed nominal $\Delta t$. Because each step of Yoshida 4 requires 6 force evaluations vs. 4 for RK4, 2 for Verlet, and 1 for Euler, equal-$\Delta t$ comparisons do not normalize for computational work.
-* **M8.2b Status**: Cost-normalized evaluation across matched evaluation budgets is deferred to Milestone M8.2b and was **NOT** executed in this phase.
+* **M8.2b Transition**: Cost-normalized evaluation across matched force evaluation budgets is documented below in Section 14.
+
+---
+
+## 14. Executed Milestone M8.2b: Cost-Normalized Comparison Results (100 Orbits)
+
+### 14.1 Objective and Methodology
+* **Core Research Question**: How do Explicit Euler, Velocity Verlet, Classical RK4, and Yoshida 4 perform over a 100-orbit horizon ($t_f = 100 T \approx 555362.432\text{ s}$) when provided with an identical computational budget, measured by the total number of gravitational acceleration evaluations?
+* **Computational Cost Proxy**: In the modular, un-cached implementations in this codebase, force evaluations per outer timestep are:
+  * Explicit Euler: 1 eval/step
+  * Velocity Verlet: 2 evals/step
+  * Classical RK4: 4 evals/step
+  * Yoshida 4: 6 evals/step (3 substeps $\times$ 2 evals/substep)
+  * *Important Note*: This is an implementation-level proxy reflecting force evaluation count, NOT a hardware-dependent wall-clock benchmark.
+* **Budget Selection and Step Accounting**:
+  To guarantee exact mathematical integer step counts without remainder or step truncation across all 4 solvers, budgets $B$ are selected to be common multiples of $\text{lcm}(1, 2, 4, 6) = 12$:
+  $$B \in \{27768, 55536, 111072\}$$
+  For each budget $B$ and method:
+  $$N_{\text{steps}} = \frac{B}{\text{evals\_per\_step}}, \quad \Delta t = \frac{t_f}{N_{\text{steps}}} = \frac{100 T}{N_{\text{steps}}}$$
+  * *Exact Budget Equality*: $\text{actual\_force\_evals} = N_{\text{steps}} \times \text{evals\_per\_step} \equiv B$ exactly.
+  * *Uniform Step Size*: All steps within a run are identical; no shortened final step is needed.
+  * *Final Time Precision*: Terminal physical timestamp satisfies $|t_{\text{final}} - 100 T| < 10^{-11}\text{ s}$ across all runs.
+* **Generated Output Artifacts**:
+  * `results/exp08_cost_normalized.csv` (12 data rows + header)
+  * `results/exp08_cost_normalized_position_error.png`
+  * `results/exp08_cost_normalized_velocity_error.png`
+  * `results/exp08_cost_normalized_energy.png`
+  * `results/exp08_cost_normalized_angular_momentum.png`
+  * `results/exp08_cost_normalized_phase.png`
+
+### 14.2 Cost-Normalized Results Table (100 Orbits)
+
+| Budget $B$ | Method | Steps | $\Delta t$ [s] | Final $e_r$ [km] | Max $e_r$ [km] | Final $\Delta r$ [km] | Final $\Delta\theta$ [rad] | $\max |\delta\varepsilon|$ | Final $\delta\varepsilon$ | $\max |\delta h|$ | Final $\delta h$ |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **27,768** | Euler | 27768 | 20.000 | $3.152 \times 10^{4}$ | $3.922 \times 10^{4}$ | $2.076 \times 10^{4}$ | $-506.84$ | $7.756 \times 10^{-1}$ | $+7.756 \times 10^{-1}$ | $1.099 \times 10^{0}$ | $+1.099 \times 10^{0}$ |
+| **27,768** | Verlet | 13884 | 40.000 | $2.883 \times 10^{3}$ | $2.884 \times 10^{3}$ | $0.020$ | $-0.4286$ | $1.045 \times 10^{-6}$ | $+3.034 \times 10^{-9}$ | $5.319 \times 10^{-15}$ | $+9.799 \times 10^{-16}$ |
+| **27,768** | RK4 | 6942 | 80.000 | $3.458 \times 10^{2}$ | $3.458 \times 10^{2}$ | $0.720$ | $+0.0510$ | $1.062 \times 10^{-4}$ | $-1.062 \times 10^{-4}$ | $5.312 \times 10^{-5}$ | $-5.312 \times 10^{-5}$ |
+| **27,768** | Yoshida 4 | 4628 | 120.001 | $1.344 \times 10^{3}$ | $1.344 \times 10^{3}$ | $0.029$ | $+0.1987$ | $1.225 \times 10^{-7}$ | $+1.485 \times 10^{-9}$ | $5.879 \times 10^{-15}$ | $-3.779 \times 10^{-15}$ |
+| **55,536** | Euler | 55536 | 10.000 | $2.431 \times 10^{4}$ | $3.131 \times 10^{4}$ | $1.608 \times 10^{4}$ | $-463.31$ | $7.164 \times 10^{-1}$ | $+7.164 \times 10^{-1}$ | $8.759 \times 10^{-1}$ | $+8.759 \times 10^{-1}$ |
+| **55,536** | Verlet | 27768 | 20.000 | $7.264 \times 10^{2}$ | $7.267 \times 10^{2}$ | $3.12 \times 10^{-4}$ | $-0.1072$ | $6.549 \times 10^{-8}$ | $+1.180 \times 10^{-11}$ | $7.979 \times 10^{-15}$ | $+1.680 \times 10^{-15}$ |
+| **55,536** | RK4 | 13884 | 40.000 | $1.099 \times 10^{1}$ | $1.099 \times 10^{1}$ | $0.022$ | $+0.0016$ | $3.314 \times 10^{-6}$ | $-3.314 \times 10^{-6}$ | $1.657 \times 10^{-6}$ | $-1.657 \times 10^{-6}$ |
+| **55,536** | Yoshida 4 | 9256 | 60.000 | $8.383 \times 10^{1}$ | $8.384 \times 10^{1}$ | $7.31 \times 10^{-6}$ | $+0.0124$ | $4.784 \times 10^{-10}$ | $+2.247 \times 10^{-14}$ | $7.279 \times 10^{-15}$ | $-5.599 \times 10^{-16}$ |
+| **111,072** | Euler | 111072 | 5.000 | $1.369 \times 10^{4}$ | $2.617 \times 10^{4}$ | $1.247 \times 10^{4}$ | $-408.91$ | $6.449 \times 10^{-1}$ | $+6.449 \times 10^{-1}$ | $6.778 \times 10^{-1}$ | $+6.778 \times 10^{-1}$ |
+| **111,072** | Verlet | 55536 | 10.000 | $1.817 \times 10^{2}$ | $1.818 \times 10^{2}$ | $4.87 \times 10^{-6}$ | $-0.0268$ | $4.095 \times 10^{-9}$ | $+2.127 \times 10^{-14}$ | $2.170 \times 10^{-14}$ | $-1.246 \times 10^{-14}$ |
+| **111,072** | RK4 | 27768 | 20.000 | $3.563 \times 10^{-1}$ | $3.563 \times 10^{-1}$ | $7.02 \times 10^{-4}$ | $+5.26 \times 10^{-5}$ | $1.035 \times 10^{-7}$ | $-1.035 \times 10^{-7}$ | $5.177 \times 10^{-8}$ | $-5.177 \times 10^{-8}$ |
+| **111,072** | Yoshida 4 | 18512 | 30.000 | $5.235 \times 10^{0}$ | $5.235 \times 10^{0}$ | $1.79 \times 10^{-9}$ | $+7.72 \times 10^{-4}$ | $1.901 \times 10^{-12}$ | $+9.908 \times 10^{-15}$ | $1.694 \times 10^{-14}$ | $+4.759 \times 10^{-15}$ |
+
+*Note: All trajectory-wide maxima (`max_*`) are evaluated strictly over discrete sampled states along each solver's trajectory.*
+
+### 14.3 Multi-Dimensional Trade-Off Analysis (No Ranking/Scores)
+
+Cost normalization reveals clear physical and computational trade-offs depending on the target metric:
+
+1. **Cartesian Trajectory Discrepancy ($e_r$):**
+   * At identical force evaluation budgets, Classical RK4 achieves smaller Cartesian position error $e_r(100T)$ than Velocity Verlet and Yoshida 4 across all three budgets ($345.8\text{ km}$ vs $1344\text{ km}$ and $2883\text{ km}$ at 27k; $10.99\text{ km}$ vs $83.83\text{ km}$ at 55k; $0.356\text{ km}$ vs $5.24\text{ km}$ at 111k).
+   * *Mechanism*: Yoshida 4 incurs 6 evaluations per step, requiring a timestep $1.5\times$ larger than RK4 ($\Delta t_{\text{Yoshida}} = 1.5 \Delta t_{\text{RK4}}$) and $3\times$ larger than Velocity Verlet. Because along-track phase drift scales with step size ($\Delta\theta \propto t \cdot \Delta t^p$), the larger timestep leads to higher cumulative phase lag and therefore higher Cartesian position error over moderate horizons ($100T$).
+
+2. **Invariant Preservation (Energy and Angular Momentum):**
+   * *Velocity Verlet & Yoshida 4*: Maintain relative angular momentum error at the IEEE 754 float64 machine precision level ($\max |\delta h| \le 2.2 \times 10^{-14}$) across all budgets. Energy error is oscillatory and bounded by the modified Hamiltonian envelope ($\max |\delta\varepsilon| \sim 1.9 \times 10^{-12}$ for Yoshida 4 at 111k evals). No secular trend was detected over the 100-orbit horizon.
+   * *Classical RK4*: Exhibits measurable secular numerical dissipation: energy loss reaches $\delta\varepsilon(100T) \approx -1.06 \times 10^{-4}$ at 27k, $-3.31 \times 10^{-6}$ at 55k, and $-1.04 \times 10^{-7}$ at 111k. Angular momentum exhibits an identical secular decline ($\delta h(100T) \approx -5.31 \times 10^{-5}$ at 27k, $-5.18 \times 10^{-8}$ at 111k).
+
+3. **Radial Shape vs. Along-Track Phase Drift:**
+   * For the symplectic schemes, orbital radius deviation $\Delta r$ remains negligible (Yoshida 4 final $\Delta r \approx 29\text{ m}$ at 27k, $7.3\text{ mm}$ at 55k, and $1.8\ \mu\text{m}$ at 111k; Verlet final $\Delta r \approx 20\text{ m}$ at 27k, $0.31\text{ m}$ at 55k, and $4.87\text{ mm}$ at 111k). The Cartesian position error is almost exclusively along-track phase drift ($e_r \approx 2 r_0 \sin(|\Delta\theta| / 2)$).
+   * For RK4, the dissipation manifests as a monotonic inward radial bias ($\Delta r(100T) \approx -720\text{ m}$ at 27k, $-22\text{ m}$ at 55k, $-0.70\text{ m}$ at 111k).
+
+4. **Explicit Euler:**
+   * Remains unstable across all budgets ($\Delta r > 12000\text{ km}$, $\delta\varepsilon > 0.64$, $\delta h > 0.67$), confirming that even with $6\times$ more integration steps than Yoshida 4, non-symplectic low-order Euler cannot maintain orbital stability.
+
+### 14.4 Scope and Limitations
+* **Force-Evaluation Metric**: Normalization is based on function evaluations in the current modular implementation. It does not measure CPU cache effects, memory bandwidth, or compiler optimizations.
+* **Problem Regime**: Results are valid strictly for circular, unperturbed, 2D two-body Keplerian orbits over 100 periods in float64 arithmetic.
+* **No Generalization**: Conclusions cannot be extrapolated to perturbed systems ($J_2$, drag, n-body), highly eccentric orbits, adaptive timestepping, or alternative solver implementations without separate investigation.
+* **Milestone M8.3 Status**: Milestone M8.3 is deferred and was **NOT** executed in this phase.
