@@ -406,28 +406,27 @@ All results are reproducible by executing the standardized suite with fixed init
 
 ### 13.3 Scientific Observations and Analysis
 
-1. **Explicit Euler — Structural Secular Divergence**:
-   * Euler exhibits unchecked secular energy growth ($\delta\varepsilon \approx +0.86$ at $\Delta t = 60\text{ s}$) and angular momentum drift ($\delta h \approx +1.45$).
-   * The orbit rapidly spirals outward, accumulating enormous radial deviations ($\Delta r > 20000\text{ km}$) and massive along-track phase errors ($|\Delta\theta| > 490\text{ rad}$).
-   * This confirms the known physical instability of Explicit Euler for orbital propagation.
+1. **Explicit Euler — Strong Unbounded Growth**:
+   * Euler exhibits strong unbounded growth of trajectory error, energy deviation, and radial error over the tested horizon ($\delta\varepsilon \approx +0.86$, $\delta h \approx +1.45$, and $\Delta r > 20000\text{ km}$ at $\Delta t = 60\text{ s}$).
+   * Massive along-track phase errors ($|\Delta\theta| > 490\text{ rad}$) and trajectory breakdown occur across all tested timesteps.
+   * This confirms the known numerical instability of Explicit Euler for orbital propagation without assuming an unverified specific growth law.
 
-2. **Velocity Verlet — Symplectic Boundedness vs. Phase Accumulation**:
-   * *Energy*: Relative energy deviation remains strictly bounded within an $\mathcal{O}(\Delta t^2)$ envelope ($\max |\delta\varepsilon| \approx 5.27 \times 10^{-6}$ at $60\text{ s}$, $2.07 \times 10^{-8}$ at $15\text{ s}$). No secular energy drift is observed.
-   * *Angular Momentum*: Conserved to IEEE 754 float64 machine precision ($\max |\delta h| < 8.7 \times 10^{-15}$).
-   * *Radial Deviation*: The orbit shape remains intact ($\Delta r(100T) \approx 0.23\text{ km}$ at $60\text{ s}$, $5.4 \times 10^{-5}\text{ km}$ at $15\text{ s}$).
-   * *Phase Error*: Along-track phase error drifts secularly and linearly with time ($\Delta\theta(t) \propto t \cdot \Delta t^2$), reaching $|\Delta\theta| \approx 0.963\text{ rad}$ at $60\text{ s}$. Consequently, the large Cartesian position error ($e_r \approx 6280\text{ km}$) is almost purely along-track phase lag ($r_0 \sin(|\Delta\theta|) \approx 5560\text{ km}$), NOT radial expansion.
+2. **Velocity Verlet — Symplectic Boundedness vs. Phase Drift**:
+   * *Energy*: No secular trend was detected over the tested 100-orbit horizon; the relative energy deviation remained bounded and oscillatory within an $\mathcal{O}(\Delta t^2)$ envelope ($\max |\delta\varepsilon| \approx 5.27 \times 10^{-6}$ at $60\text{ s}$, $2.07 \times 10^{-8}$ at $15\text{ s}$).
+   * *Angular Momentum*: In the conducted experiments, relative angular-momentum deviation for Velocity Verlet remained at the float64 numerical-precision level ($\max |\delta h| < 8.7 \times 10^{-15}$). This is consistent with central force symmetry and the structure of the discrete update.
+   * *Radial Deviation*: Orbital radial deviation remains comparatively small over 100 orbits ($\Delta r(100T) \approx 0.23\text{ km}$ at $60\text{ s}$, $5.4 \times 10^{-5}\text{ km}$ at $15\text{ s}$).
+   * *Phase Error vs. Radial Error*: The dominant contribution to Cartesian position error is along-track phase drift, while radial deviation remains comparatively small. Phase error accumulates over time, reaching $|\Delta\theta| \approx 0.963\text{ rad}$ at $60\text{ s}$, leading to a Cartesian position error of $e_r \approx 6280\text{ km}$ (where chord distance $2 r_0 \sin(|\Delta\theta| / 2) \approx 6280.5\text{ km}$).
 
-3. **Classical RK4 — Dissipative Secular Inward Spiral**:
-   * *Energy*: RK4 is non-symplectic and exhibits strictly dissipative secular energy loss ($\delta\varepsilon < 0$ at all checkpoints). At $\Delta t = 60\text{ s}$, $\delta\varepsilon(100T) \approx -2.52 \times 10^{-5}$.
-   * *Angular Momentum*: In contrast to symplectic integrators, RK4 does not conserve discrete angular momentum at the machine precision limit; $\delta h$ drifts secularly and negatively ($\delta h(100T) \approx -1.26 \times 10^{-5}$ at $60\text{ s}$), scaling as $\mathcal{O}(\Delta t^4)$.
-   * *Radial Deviation*: The orbit steadily contracts ($\Delta r(100T) \approx -0.171\text{ km}$ at $60\text{ s}$).
-   * *Position Error*: Due to its 4th-order truncation error, absolute errors remain small over 100 orbits ($e_r \approx 82.5\text{ km}$ at $60\text{ s}$, $0.0866\text{ km}$ at $15\text{ s}$).
+3. **Classical RK4 — Dissipative Secular Drift and Radial Bias**:
+   * *Energy and Invariants*: RK4 exhibits a measurable secular drift in energy and angular momentum over the tested 100-orbit horizon ($\delta\varepsilon(100T) \approx -2.52 \times 10^{-5}$, $\delta h(100T) \approx -1.26 \times 10^{-5}$ at $\Delta t = 60\text{ s}$), accompanied by a small monotonic inward radial bias ($\Delta r(100T) \approx -0.171\text{ km} = -171\text{ m}$ at $\Delta t = 60\text{ s}$).
+   * *No Center Fall / Extrapolation*: The observed inward radial deviation is bounded to 171 m after 100 orbits at $\Delta t = 60\text{ s}$ and does not constitute a rapid collapse or spiral into the center on the tested horizon.
+   * *Position Error*: Due to 4th-order local truncation error, Cartesian position error remains relatively small over 100 orbits ($e_r \approx 82.5\text{ km}$ at $60\text{ s}$, $0.0866\text{ km}$ at $15\text{ s}$).
 
 4. **Yoshida 4 — Fourth-Order Symplectic Fidelity**:
-   * *Energy*: Energy error is bounded within a 4th-order modified Hamiltonian envelope ($\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$ at $60\text{ s}$), reaching the float64 arithmetic precision limit ($\sim 6.7 \times 10^{-14}$) at $\Delta t = 15\text{ s}$.
-   * *Angular Momentum*: Preserved to machine precision across all timesteps ($\max |\delta h| < 3.1 \times 10^{-14}$).
-   * *Radial Deviation*: Orbital geometry is preserved with sub-meter radial fidelity ($\Delta r(100T) \approx 7.0 \times 10^{-6}\text{ km} = 7.0\text{ mm}$ at $60\text{ s}$, $1.3\text{ mm}$ at $15\text{ s}$).
-   * *Phase Error*: Position error over 100 orbits is dominated by along-track phase drift ($e_r \approx 83.8\text{ km}$ at $60\text{ s}$, $0.327\text{ km}$ at $15\text{ s}$), where $e_r \approx r_0 |\Delta\theta|$ ($6778.137 \times 0.012368 \approx 83.83\text{ km}$).
+   * *Energy*: Energy error remained bounded and oscillatory within the expected 4th-order modified Hamiltonian envelope ($\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$ at $60\text{ s}$); no secular trend was detected over the tested 100-orbit horizon. At $\Delta t = 15\text{ s}$, energy error reached the float64 arithmetic precision limit ($\sim 6.7 \times 10^{-14}$). (Note: $\mathcal{O}(\Delta t^4)$ describes the expected modified-Hamiltonian scaling structure; the special empirical $\mathcal{O}(\Delta t^8)$ scaling identified in M7 under specific conditions is not extrapolated to M8.2a).
+   * *Angular Momentum*: In the conducted experiments, relative angular-momentum deviation for Yoshida 4 remained at the float64 numerical-precision level ($\max |\delta h| < 3.1 \times 10^{-14}$), consistent with central force symmetry.
+   * *Radial Deviation and Units*: The maximum radial deviation across the entire 100-orbit trajectory remained within $148\text{ m}$ at $\Delta t = 60\text{ s}$ and $0.58\text{ m}$ at $\Delta t = 15\text{ s}$. At the final endpoint $t = 100T$, the radial deviation is $\Delta r(100T) \approx 7.0 \times 10^{-6}\text{ km} \approx 7.0\text{ mm}$ at $\Delta t = 60\text{ s}$, and $\sim 1.3 \times 10^{-9}\text{ km} \approx 1.3\ \mu\text{m}$ at $\Delta t = 15\text{ s}$. No unverified sub-millimeter claim is made for $\Delta t = 60\text{ s}$.
+   * *Phase Error vs. Radial Error*: The dominant contribution to Cartesian position error is along-track phase drift, while radial deviation remains comparatively small ($e_r \approx 83.8\text{ km}$ at $60\text{ s}$, $0.327\text{ km}$ at $15\text{ s}$, consistent with $e_r \approx r_0 |\Delta\theta|$).
 
 ### 13.4 M8.2a Scope and Limitations
 * **Fixed-dt Only**: All runs use fixed nominal $\Delta t$. Because each step of Yoshida 4 requires 6 force evaluations vs. 4 for RK4, 2 for Verlet, and 1 for Euler, equal-$\Delta t$ comparisons do not normalize for computational work.
