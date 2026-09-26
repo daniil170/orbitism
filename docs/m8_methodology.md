@@ -484,22 +484,36 @@ All results are reproducible by executing the standardized suite with fixed init
 Cost normalization reveals clear physical and computational trade-offs depending on the target metric:
 
 1. **Cartesian Trajectory Discrepancy ($e_r$):**
-   * At identical force evaluation budgets, Classical RK4 achieves smaller Cartesian position error $e_r(100T)$ than Velocity Verlet and Yoshida 4 across all three budgets ($345.8\text{ km}$ vs $1344\text{ km}$ and $2883\text{ km}$ at 27k; $10.99\text{ km}$ vs $83.83\text{ km}$ at 55k; $0.356\text{ km}$ vs $5.24\text{ km}$ at 111k).
-   * *Mechanism*: Yoshida 4 incurs 6 evaluations per step, requiring a timestep $1.5\times$ larger than RK4 ($\Delta t_{\text{Yoshida}} = 1.5 \Delta t_{\text{RK4}}$) and $3\times$ larger than Velocity Verlet. Because along-track phase drift scales with step size ($\Delta\theta \propto t \cdot \Delta t^p$), the larger timestep leads to higher cumulative phase lag and therefore higher Cartesian position error over moderate horizons ($100T$).
+   * Within the scope of the three tested computational budgets, four solvers, and the 100-orbit horizon, Classical RK4 exhibited the smallest final Cartesian position error $e_r(100T)$ among the evaluated methods ($345.8\text{ km}$ vs $1344\text{ km}$ and $2883\text{ km}$ at 27k; $10.99\text{ km}$ vs $83.83\text{ km}$ at 55k; $0.356\text{ km}$ vs $5.24\text{ km}$ at 111k). This is an empirical observation specific to this setup and horizon, not a universal property of RK4 across all dynamical problems.
+   * At matched force-evaluation budgets, Yoshida 4 requires 6 force evaluations per outer step compared to 4 for Classical RK4. Consequently, its timestep in this experiment is $1.5\times$ larger than that of RK4 ($\Delta t_{\text{Yoshida}} = 1.5 \Delta t_{\text{RK4}}$). Because along-track phase drift scales with step size ($\Delta\theta \propto t \cdot \Delta t^4$), this larger step size directly contributes to a larger Cartesian position error for Yoshida 4 compared to RK4 on the evaluated 100-orbit horizon, illustrating that symplecticity does not inherently imply smaller Cartesian trajectory error at equal function-evaluation budgets.
 
 2. **Invariant Preservation (Energy and Angular Momentum):**
-   * *Velocity Verlet & Yoshida 4*: Maintain relative angular momentum error at the IEEE 754 float64 machine precision level ($\max |\delta h| \le 2.2 \times 10^{-14}$) across all budgets. Energy error is oscillatory and bounded by the modified Hamiltonian envelope ($\max |\delta\varepsilon| \sim 1.9 \times 10^{-12}$ for Yoshida 4 at 111k evals). No secular trend was detected over the 100-orbit horizon.
-   * *Classical RK4*: Exhibits measurable secular numerical dissipation: energy loss reaches $\delta\varepsilon(100T) \approx -1.06 \times 10^{-4}$ at 27k, $-3.31 \times 10^{-6}$ at 55k, and $-1.04 \times 10^{-7}$ at 111k. Angular momentum exhibits an identical secular decline ($\delta h(100T) \approx -5.31 \times 10^{-5}$ at 27k, $-5.18 \times 10^{-8}$ at 111k).
+   * *Angular Momentum*: In the conducted experiments, relative angular-momentum deviation for Velocity Verlet and Yoshida 4 remained at the IEEE 754 float64 numerical-precision level ($\max |\delta h| \le 2.2 \times 10^{-14}$) across all tested budgets. This reflects the central-force symmetry of the problem and discrete update structure, without claiming universal conservation in arbitrary settings.
+   * *Energy*: In the conducted 100-orbit fixed-step experiment on the 400 km circular two-body orbit, relative energy deviation for Velocity Verlet and Yoshida 4 remained bounded and oscillatory ($\max |\delta\varepsilon| \sim 1.9 \times 10^{-12}$ for Yoshida 4 at 111k evals); no secular trend was detected over the tested horizon.
+   * *Classical RK4*: In the conducted experiments over the 100-orbit horizon, Classical RK4 exhibited a systematic decrease in both energy and angular momentum (final $\delta\varepsilon \approx -1.06 \times 10^{-4}$ at 27k, $-3.31 \times 10^{-6}$ at 55k, and $-1.04 \times 10^{-7}$ at 111k; final $\delta h \approx -5.31 \times 10^{-5}$ at 27k, $-5.18 \times 10^{-8}$ at 111k). This is an empirical observation of the scheme's truncation characteristics under this fixed-step Keplerian configuration.
 
 3. **Radial Shape vs. Along-Track Phase Drift:**
-   * For the symplectic schemes, orbital radius deviation $\Delta r$ remains negligible (Yoshida 4 final $\Delta r \approx 29\text{ m}$ at 27k, $7.3\text{ mm}$ at 55k, and $1.8\ \mu\text{m}$ at 111k; Verlet final $\Delta r \approx 20\text{ m}$ at 27k, $0.31\text{ m}$ at 55k, and $4.87\text{ mm}$ at 111k). The Cartesian position error is almost exclusively along-track phase drift ($e_r \approx 2 r_0 \sin(|\Delta\theta| / 2)$).
-   * For RK4, the dissipation manifests as a monotonic inward radial bias ($\Delta r(100T) \approx -720\text{ m}$ at 27k, $-22\text{ m}$ at 55k, $-0.70\text{ m}$ at 111k).
+   * For Velocity Verlet and Yoshida 4 across all tested budgets, the dominant contribution to Cartesian position error is associated with along-track phase drift, while radial deviation remains substantially smaller (e.g. at 55k evals, Yoshida 4 has final $\Delta r \approx 7.3\text{ mm}$ vs $e_r \approx 83.8\text{ km}$; Verlet has final $\Delta r \approx 0.31\text{ m}$ vs $e_r \approx 726\text{ km}$).
+   * For Classical RK4, a small negative (inward) radial bias was observed on the 100-orbit horizon ($\Delta r(100T) \approx -720\text{ m}$ at 27k, $-22\text{ m}$ at 55k, $-0.70\text{ m}$ at 111k), without implying rapid collapse or spiral into the center.
 
 4. **Explicit Euler:**
-   * Remains unstable across all budgets ($\Delta r > 12000\text{ km}$, $\delta\varepsilon > 0.64$, $\delta h > 0.67$), confirming that even with $6\times$ more integration steps than Yoshida 4, non-symplectic low-order Euler cannot maintain orbital stability.
+   * Euler demonstrated strong unbounded growth of position error, energy deviation, and angular-momentum deviation over the tested 100-orbit horizon across all budgets ($\Delta r > 12000\text{ km}$, $\delta\varepsilon > 0.64$, $\delta h > 0.67$). While Euler is a first-order non-symplectic scheme, receiving $6\times$ more integration steps than Yoshida 4 does not prevent large deviations under the tested conditions.
 
 ### 14.4 Scope and Limitations
-* **Force-Evaluation Metric**: Normalization is based on function evaluations in the current modular implementation. It does not measure CPU cache effects, memory bandwidth, or compiler optimizations.
-* **Problem Regime**: Results are valid strictly for circular, unperturbed, 2D two-body Keplerian orbits over 100 periods in float64 arithmetic.
-* **No Generalization**: Conclusions cannot be extrapolated to perturbed systems ($J_2$, drag, n-body), highly eccentric orbits, adaptive timestepping, or alternative solver implementations without separate investigation.
+* **Computational Cost Proxy**: Normalization is based strictly on force evaluations in the current modular, un-cached implementation. It is an implementation-level proxy and NOT a wall-clock benchmark, NOT a universal cost of the methods, and NOT a hardware-independent performance guarantee. No conclusions regarding CPU cache, SIMD, or wall-clock runtime are made.
+* **Strict Problem Scope**: Results and conclusions are strictly limited to:
+  * 2D planar motion;
+  * Unperturbed Newtonian two-body Earth-satellite model;
+  * Circular orbit at 400 km altitude ($r_0 = 6778.137\text{ km}$);
+  * Fixed-timestep integration;
+  * Standard IEEE 754 float64 arithmetic precision;
+  * Integration horizon of exactly 100 orbital periods ($100T \approx 555362.432\text{ s}$);
+  * Current implementation-level solver routines.
+* **No Generalization**: Conclusions cannot be extrapolated to:
+  * Eccentric or highly eccentric orbits;
+  * Perturbed dynamics ($J_2$, atmospheric drag, third-body luni-solar perturbations);
+  * 3D orbital dynamics;
+  * Adaptive timestepping or embedded Runge-Kutta / symplectic algorithms;
+  * Alternative or optimized implementations of the same methods;
+  * Physical hardware-dependent execution speed.
 * **Milestone M8.3 Status**: Milestone M8.3 is deferred and was **NOT** executed in this phase.
