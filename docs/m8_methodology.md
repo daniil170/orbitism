@@ -358,3 +358,77 @@ All results are reproducible by executing the standardized suite with fixed init
 ### 12.4 M8.1 Experiment Scope and Limitations
 * **Single Orbital Horizon**: The M8.1 benchmark covers strictly one orbital period ($1T$). Long-term secular error growth, stability horizons, and structural divergence over $100T$ are part of Milestone M8.2 and were not evaluated in this experiment.
 * **Matched-Timestep vs. Matched-Cost**: The results above reflect identical $\Delta t$ grids. Because the four solvers incur different numbers of force evaluations per step ($1, 2, 4, 6$), equal-$\Delta t$ comparisons do not reflect equal computational cost. Cost-normalized evaluations are deferred to M8.2.
+
+---
+
+## 13. Executed Milestone M8.2a: Long-Term Fixed-dt Comparison Results (100 Orbits)
+
+### 13.1 Execution Parameters
+* **Execution Timestamp**: 2026-09-26
+* **Simulation Horizon**: Exactly 100 orbital periods:
+  $$t_f = 100 \times T = 555362.4318623783\text{ s} \quad (\approx 6.4278\text{ days})$$
+* **Solvers Evaluated**: 4 methods (`Explicit Euler`, `Velocity Verlet`, `Classical RK4`, `Yoshida 4`).
+* **Nominal Timestep Grid**: $\Delta t \in \{60.0, 30.0, 15.0\}\text{ s}$.
+* **Total Executed Simulations**: 12 runs (4 solvers $\times$ 3 timesteps).
+* **Step Composition**: Each run integrates $N_{\text{full}} = \lfloor 100 T / \Delta t \rfloor$ nominal full steps, followed by a single shortened final step:
+  $$\Delta t_{\text{last}} = 100 T - 555360.0\text{ s} \approx 2.431862378\text{ s}$$
+  All 12 runs terminate at $t_f = 100 T$ with $|t_{\text{final}} - 100 T| < 10^{-11}\text{ s}$.
+  * $\Delta t = 60.0\text{ s}$: 9256 full steps + 1 step of $2.431862\text{ s}$ = 9257 steps.
+  * $\Delta t = 30.0\text{ s}$: 18512 full steps + 1 step of $2.431862\text{ s}$ = 18513 steps.
+  * $\Delta t = 15.0\text{ s}$: 37024 full steps + 1 step of $2.431862\text{ s}$ = 37025 steps.
+* **Discrete Checkpoints**: Sampled at $\{1.0T, 5.0T, 10.0T, 20.0T, 50.0T, 100.0T\}$. At each checkpoint, analytical reference kinematics are evaluated at the actual sampled discrete timestamp $t_{\text{actual}}$.
+* **Generated Output Artifacts**:
+  * `results/exp08_long_term_fixed_dt.csv` (12 trajectory-wide summary rows + header)
+  * `results/exp08_long_term_checkpoints.csv` (72 checkpoint rows + header)
+  * `results/exp08_long_term_position_error.png`
+  * `results/exp08_long_term_energy_deviation.png`
+  * `results/exp08_long_term_angular_momentum.png`
+  * `results/exp08_long_term_phase_error.png`
+
+### 13.2 Summary Results Table (100 Orbits)
+
+| Method | $\Delta t$ [s] | Steps | Evals | Max $e_r$ [km] | Final $e_r$ [km] | Final $\Delta\theta$ [rad] | $\max |\delta\varepsilon|$ | Final $\delta\varepsilon$ | $\max |\delta h|$ | Final $\delta h$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Euler** | 60.0 | 9257 | 9257 | $7.1477 \times 10^{4}$ | $6.1782 \times 10^{4}$ | $-560.59$ | $0.8566$ | $+0.8566$ | $1.4543$ | $+1.4543$ |
+| **Euler** | 30.0 | 18513 | 18513 | $4.7068 \times 10^{4}$ | $3.2931 \times 10^{4}$ | $-528.53$ | $0.8050$ | $+0.8050$ | $1.2342$ | $+1.2342$ |
+| **Euler** | 15.0 | 37025 | 37025 | $3.5824 \times 10^{4}$ | $2.0598 \times 10^{4}$ | $-490.21$ | $0.7518$ | $+0.7518$ | $1.0024$ | $+1.0024$ |
+| **Velocity Verlet** | 60.0 | 9257 | 18514 | $6.2835 \times 10^{3}$ | $6.2806 \times 10^{3}$ | $-0.9634$ | $5.2719 \times 10^{-6}$ | $+7.99 \times 10^{-8}$ | $5.18 \times 10^{-15}$ | $+3.50 \times 10^{-15}$ |
+| **Velocity Verlet** | 30.0 | 18513 | 37026 | $1.6314 \times 10^{3}$ | $1.6307 \times 10^{3}$ | $-0.2412$ | $3.3120 \times 10^{-7}$ | $+3.31 \times 10^{-10}$ | $8.26 \times 10^{-15}$ | $-2.52 \times 10^{-15}$ |
+| **Velocity Verlet** | 15.0 | 37025 | 74050 | $4.0892 \times 10^{2}$ | $4.0874 \times 10^{2}$ | $-0.0603$ | $2.0727 \times 10^{-8}$ | $+1.64 \times 10^{-12}$ | $8.68 \times 10^{-15}$ | $+2.10 \times 10^{-15}$ |
+| **RK4** | 60.0 | 9257 | 37028 | $8.2499 \times 10^{1}$ | $8.2499 \times 10^{1}$ | $+0.0122$ | $2.5183 \times 10^{-5}$ | $-2.5183 \times 10^{-5}$ | $1.2591 \times 10^{-5}$ | $-1.2591 \times 10^{-5}$ |
+| **RK4** | 30.0 | 18513 | 74052 | $2.6410 \times 10^{0}$ | $2.6410 \times 10^{0}$ | $+3.90 \times 10^{-4}$ | $7.8632 \times 10^{-7}$ | $-7.8632 \times 10^{-7}$ | $3.9316 \times 10^{-7}$ | $-3.9316 \times 10^{-7}$ |
+| **RK4** | 15.0 | 37025 | 148100 | $8.6568 \times 10^{-2}$ | $8.6568 \times 10^{-2}$ | $+1.28 \times 10^{-5}$ | $2.4568 \times 10^{-8}$ | $-2.4568 \times 10^{-8}$ | $1.2284 \times 10^{-8}$ | $-1.2284 \times 10^{-8}$ |
+| **Yoshida 4** | 60.0 | 9257 | 55542 | $8.3837 \times 10^{1}$ | $8.3832 \times 10^{1}$ | $+0.0124$ | $4.7840 \times 10^{-10}$ | $+7.01 \times 10^{-15}$ | $1.526 \times 10^{-14}$ | $-1.34 \times 10^{-14}$ |
+| **Yoshida 4** | 30.0 | 18513 | 111078 | $5.2353 \times 10^{0}$ | $5.2351 \times 10^{0}$ | $+7.72 \times 10^{-4}$ | $1.9291 \times 10^{-12}$ | $+6.02 \times 10^{-14}$ | $3.094 \times 10^{-14}$ | $+3.00 \times 10^{-14}$ |
+| **Yoshida 4** | 15.0 | 37025 | 222150 | $3.2714 \times 10^{-1}$ | $3.2712 \times 10^{-1}$ | $+4.83 \times 10^{-5}$ | $6.7300 \times 10^{-14}$ | $+5.78 \times 10^{-14}$ | $3.024 \times 10^{-14}$ | $+2.90 \times 10^{-14}$ |
+
+*Note: All trajectory-wide maxima (`max_*`) are evaluated strictly over the discrete sampled states along each solver's trajectory, not over continuous time.*
+
+### 13.3 Scientific Observations and Analysis
+
+1. **Explicit Euler — Structural Secular Divergence**:
+   * Euler exhibits unchecked secular energy growth ($\delta\varepsilon \approx +0.86$ at $\Delta t = 60\text{ s}$) and angular momentum drift ($\delta h \approx +1.45$).
+   * The orbit rapidly spirals outward, accumulating enormous radial deviations ($\Delta r > 20000\text{ km}$) and massive along-track phase errors ($|\Delta\theta| > 490\text{ rad}$).
+   * This confirms the known physical instability of Explicit Euler for orbital propagation.
+
+2. **Velocity Verlet — Symplectic Boundedness vs. Phase Accumulation**:
+   * *Energy*: Relative energy deviation remains strictly bounded within an $\mathcal{O}(\Delta t^2)$ envelope ($\max |\delta\varepsilon| \approx 5.27 \times 10^{-6}$ at $60\text{ s}$, $2.07 \times 10^{-8}$ at $15\text{ s}$). No secular energy drift is observed.
+   * *Angular Momentum*: Conserved to IEEE 754 float64 machine precision ($\max |\delta h| < 8.7 \times 10^{-15}$).
+   * *Radial Deviation*: The orbit shape remains intact ($\Delta r(100T) \approx 0.23\text{ km}$ at $60\text{ s}$, $5.4 \times 10^{-5}\text{ km}$ at $15\text{ s}$).
+   * *Phase Error*: Along-track phase error drifts secularly and linearly with time ($\Delta\theta(t) \propto t \cdot \Delta t^2$), reaching $|\Delta\theta| \approx 0.963\text{ rad}$ at $60\text{ s}$. Consequently, the large Cartesian position error ($e_r \approx 6280\text{ km}$) is almost purely along-track phase lag ($r_0 \sin(|\Delta\theta|) \approx 5560\text{ km}$), NOT radial expansion.
+
+3. **Classical RK4 — Dissipative Secular Inward Spiral**:
+   * *Energy*: RK4 is non-symplectic and exhibits strictly dissipative secular energy loss ($\delta\varepsilon < 0$ at all checkpoints). At $\Delta t = 60\text{ s}$, $\delta\varepsilon(100T) \approx -2.52 \times 10^{-5}$.
+   * *Angular Momentum*: In contrast to symplectic integrators, RK4 does not conserve discrete angular momentum at the machine precision limit; $\delta h$ drifts secularly and negatively ($\delta h(100T) \approx -1.26 \times 10^{-5}$ at $60\text{ s}$), scaling as $\mathcal{O}(\Delta t^4)$.
+   * *Radial Deviation*: The orbit steadily contracts ($\Delta r(100T) \approx -0.171\text{ km}$ at $60\text{ s}$).
+   * *Position Error*: Due to its 4th-order truncation error, absolute errors remain small over 100 orbits ($e_r \approx 82.5\text{ km}$ at $60\text{ s}$, $0.0866\text{ km}$ at $15\text{ s}$).
+
+4. **Yoshida 4 — Fourth-Order Symplectic Fidelity**:
+   * *Energy*: Energy error is bounded within a 4th-order modified Hamiltonian envelope ($\max |\delta\varepsilon| \approx 4.78 \times 10^{-10}$ at $60\text{ s}$), reaching the float64 arithmetic precision limit ($\sim 6.7 \times 10^{-14}$) at $\Delta t = 15\text{ s}$.
+   * *Angular Momentum*: Preserved to machine precision across all timesteps ($\max |\delta h| < 3.1 \times 10^{-14}$).
+   * *Radial Deviation*: Orbital geometry is preserved with sub-meter radial fidelity ($\Delta r(100T) \approx 7.0 \times 10^{-6}\text{ km} = 7.0\text{ mm}$ at $60\text{ s}$, $1.3\text{ mm}$ at $15\text{ s}$).
+   * *Phase Error*: Position error over 100 orbits is dominated by along-track phase drift ($e_r \approx 83.8\text{ km}$ at $60\text{ s}$, $0.327\text{ km}$ at $15\text{ s}$), where $e_r \approx r_0 |\Delta\theta|$ ($6778.137 \times 0.012368 \approx 83.83\text{ km}$).
+
+### 13.4 M8.2a Scope and Limitations
+* **Fixed-dt Only**: All runs use fixed nominal $\Delta t$. Because each step of Yoshida 4 requires 6 force evaluations vs. 4 for RK4, 2 for Verlet, and 1 for Euler, equal-$\Delta t$ comparisons do not normalize for computational work.
+* **M8.2b Status**: Cost-normalized evaluation across matched evaluation budgets is deferred to Milestone M8.2b and was **NOT** executed in this phase.
