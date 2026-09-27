@@ -7,9 +7,11 @@ Validates:
 4. Cost accounting models and matched evaluation budget calculations.
 5. Schema consistency across planned M8 experimental artifacts.
 """
-
 import math
+from pathlib import Path
 import pytest
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 from src.integrators.euler import euler_step
 from src.models.state import State2D
@@ -44,6 +46,7 @@ from experiments.exp08_systematic_comparison import (
     PLANNED_LONG_TERM_FIXED_DT_COLUMNS,
     PLANNED_ACCURACY_VS_COST_COLUMNS,
     PLANNED_INVARIANT_QUALITY_COLUMNS,
+    PLANNED_PERIOD_PHASE_COLUMNS,
 )
 
 
@@ -287,6 +290,17 @@ class TestCSVSchemas:
         assert "de_character" in PLANNED_INVARIANT_QUALITY_COLUMNS
         assert "dh_character" in PLANNED_INVARIANT_QUALITY_COLUMNS
 
+    def test_period_phase_schema(self):
+        assert "method" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "dt" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "checkpoint_m" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "has_crossing" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "relative_period_error" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "phase_derived_delta_T" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "chord_error_km" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert "cartesian_error_km" in PLANNED_PERIOD_PHASE_COLUMNS
+        assert len(PLANNED_PERIOD_PHASE_COLUMNS) == 22
+
 
 # ==============================================================================
 # 5. ANGULAR MOMENTUM METHODOLOGY REGRESSION TESTS
@@ -330,3 +344,37 @@ class TestAngularMomentumMethodology:
         assert "dh_character" in PLANNED_INVARIANT_QUALITY_COLUMNS
         assert "max_dh" in PLANNED_CONVERGENCE_COLUMNS
         assert "max_relative_angular_momentum_error" in PLANNED_ACCURACY_VS_COST_COLUMNS
+
+
+# ==============================================================================
+# 6. FINAL SCIENTIFIC SYNTHESIS DOCUMENTATION INTEGRITY
+# ==============================================================================
+
+class TestFinalScientificSynthesis:
+    """Verifies that the final scientific synthesis document exists and covers all required areas."""
+
+    def test_synthesis_document_exists(self):
+        synthesis_path = PROJECT_ROOT / "docs" / "m8_final_synthesis.md"
+        assert synthesis_path.exists(), "docs/m8_final_synthesis.md must exist"
+
+    def test_synthesis_document_contents(self):
+        synthesis_path = PROJECT_ROOT / "docs" / "m8_final_synthesis.md"
+        content = synthesis_path.read_text(encoding="utf-8")
+
+        # Core sections
+        assert "Scientific Objective" in content
+        assert "Experimental Scope" in content
+        assert "M8.1: Analytical Reference + Discretization Convergence" in content
+        assert "M8.2a: Long-Term Fixed-Timestep Comparison" in content
+        assert "M8.2b: Cost-Normalized Comparison" in content
+        assert "M8.3: Orbital Period Error and Phase Drift Analysis" in content
+        assert "Key Numerical Observations" in content
+        assert "Important Conceptual Distinctions" in content
+        assert "Substantial Scientific Limitations" in content
+        assert "What Milestone M8 Does NOT Establish" in content
+
+        # Required conceptual nuances
+        assert "Cartesian Truncation Error" in content
+        assert "Invariant Preservation" in content
+        assert "Chord Error" in content
+        assert "Implementation-level" in content or "implementation-level" in content

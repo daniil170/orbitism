@@ -445,7 +445,7 @@ All results are reproducible by executing the standardized suite with fixed init
   * Yoshida 4: 6 evals/step (3 substeps $\times$ 2 evals/substep)
   * *Important Note*: This is an implementation-level proxy reflecting force evaluation count, NOT a hardware-dependent wall-clock benchmark.
 * **Budget Selection and Step Accounting**:
-  To guarantee exact mathematical integer step counts without remainder or step truncation across all 4 solvers, budgets $B$ are selected to be common multiples of $\text{lcm}(1, 2, 4, 6) = 12$:
+  To ensure exact integer step counts without remainder or step truncation across all 4 solvers, budgets $B$ are selected to be common multiples of $\text{lcm}(1, 2, 4, 6) = 12$:
   $$B \in \{27768, 55536, 111072\}$$
   For each budget $B$ and method:
   $$N_{\text{steps}} = \frac{B}{\text{evals\_per\_step}}, \quad \Delta t = \frac{t_f}{N_{\text{steps}}} = \frac{100 T}{N_{\text{steps}}}$$
@@ -649,6 +649,6 @@ The table below summarizes numerical results extracted at the 100-orbit checkpoi
    * For Explicit Euler, the chord model completely breaks down ($e_{\text{chord}} / e_r < 0.25$) because Cartesian error is driven by radial expansion rather than simple along-track rotation.
 
 4. **Decoupling of Phase Accuracy and Invariant Preservation**:
-   * *Symplectic Guarantee*: Velocity Verlet and Yoshida 4 preserve specific angular momentum to machine precision ($|\delta h| < 10^{-14}$) and bound energy error within small oscillatory envelopes ($|\delta\varepsilon| \le 1.9 \times 10^{-12}$ for Yoshida 4). However, symplecticity does not eliminate phase drift: both symplectic schemes accumulate along-track phase drift that grows linearly in time ($\Delta\theta \propto t$).
+   * *Symplectic Invariant Behavior*: Velocity Verlet and Yoshida 4 preserve specific angular momentum to machine precision ($|\delta h| < 10^{-14}$) and bound energy error within small oscillatory envelopes ($|\delta\varepsilon| \le 1.9 \times 10^{-12}$ for Yoshida 4). However, symplecticity does not eliminate phase drift: both symplectic schemes accumulate along-track phase drift that grows linearly in time ($\Delta\theta \propto t$).
    * *Comparison at $\Delta t = 60\text{ s}$*: Classical RK4 exhibits dissipative energy decrease ($|\delta\varepsilon| \approx 10^{-4}$ at 100 orbits), yet its phase drift rate and Cartesian error ($e_r \approx 82.5\text{ km}$) are slightly smaller than those of Yoshida 4 ($e_r \approx 83.8\text{ km}$) and far smaller than Velocity Verlet ($e_r \approx 6280.6\text{ km}$).
-   * *Conclusion*: Symplectic preservation of physical invariants guarantees qualitative structural stability (bounded orbital radius and invariant envelopes), but does not imply smaller phase drift than higher-order dissipative schemes over finite simulation horizons.
+   * *Conclusion*: Symplectic preservation of physical invariants provides qualitative structural stability (bounded orbital radius and invariant envelopes on the tested horizon), but does not imply smaller phase drift than higher-order dissipative schemes over finite simulation horizons.
