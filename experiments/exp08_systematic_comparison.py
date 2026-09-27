@@ -43,6 +43,9 @@ from src.simulation.simulator import Simulator
 from src.simulation.metrics import (
     compute_decomposed_error_history,
     convergence_order,
+    detect_positive_x_crossings,
+    phase_derived_along_track_displacement,
+    phase_derived_chord_error,
     position_error,
     velocity_error,
 )
@@ -182,6 +185,34 @@ PLANNED_INVARIANT_QUALITY_COLUMNS: List[str] = [
     "max_dh_trajectory",
     "final_dh_checkpoint",
     "dh_character",  # 'roundoff_limited' vs 'secular_drift'
+]
+
+DEFAULT_PERIOD_PHASE_DT_VALUES: List[float] = [60.0, 30.0, 15.0, 7.5]
+DEFAULT_PERIOD_PHASE_CHECKPOINTS: List[int] = [1, 5, 10, 20, 50, 100]
+
+PLANNED_PERIOD_PHASE_COLUMNS: List[str] = [
+    "method",
+    "dt",
+    "checkpoint_m",
+    "has_crossing",
+    "t_exact",
+    "t_cross",
+    "period_inst_s",
+    "period_cum_s",
+    "period_error_s",
+    "relative_period_error",
+    "phase_derived_delta_T",
+    "period_error_diff",
+    "phase_error_rad",
+    "along_track_disp_km",
+    "chord_error_km",
+    "radial_error_km",
+    "cartesian_error_km",
+    "velocity_error_km_s",
+    "relative_energy_error",
+    "relative_angular_momentum_error",
+    "order_period",
+    "order_phase",
 ]
 
 
@@ -1062,6 +1093,365 @@ def plot_cost_normalized_results(
     return generated_plots
 
 
+# ==============================================================================
+# M8.3: ORBITAL PERIOD ERROR AND PHASE DRIFT ANALYSIS
+# ==============================================================================
+
+def run_period_phase_study(
+    dt_values: Optional[List[float]] = None,
+    checkpoints_m: Optional[List[int]] = None,
+    altitude_km: float = DEFAULT_ALTITUDE_KM,
+    mu: float = MU_EARTH,
+    r_earth: float = R_EARTH,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Execute Study 3 (M8.3): Orbital period error and phase drift analysis across 4 solvers.
+
+    Evaluates Explicit Euler, Velocity Verlet, Classical RK4, and Yoshida 4 across
+    timesteps dt in [60.0, 30.0, 15.0, 7.5] s over a 100-orbit horizon without shortened
+    final steps. Crossings of the positive x-axis in the prograde direction are detected
+    via cubic Hermite root finding.
+
+    Args:
+        dt_values: Timestep values in seconds (defaults to [60.0, 30.0, 15.0, 7.5]).
+        checkpoints_m: Orbital revolution checkpoints [1, 5, 10, 20, 50, 100].
+        altitude_km: Orbital altitude in km (default: 400.0).
+        mu: Gravitational parameter in km^3/s^2.
+        r_earth: Central body radius in km.
+
+    Returns:
+        Tuple of (checkpoint_records, summaries_dict).
+    """
+    if dt_values is None:
+        dt_values = list(DEFAULT_PERIOD_PHASE_DT_VALUES)
+    if checkpoints_m is None:
+        checkpoints_m = list(DEFAULT_PERIOD_PHASE_CHECKPOINTS)
+
+    r0 = r_earth + altitude_km
+    t_orbit = circular_orbit_period(r0, mu=mu)
+    initial_state = create_circular_orbit_state(
+        altitude_km=altitude_km, mu=mu, r_earth=r_earth
+    )
+
+    records: List[Dict[str, Any]] = []
+    summaries: Dict[str, Any] = {}
+
+    for method_name, integrator_cls in SOLVER_REGISTRY.items():
+        prev_errors: Dict[int, Tuple[Optional[float], Optional[float], Optional[float]]] = {}
+        for dt in dt_values:
+            num_steps = math.ceil(100.5 * t_orbit / dt)
+            sim = Simulator(initial_state=initial_state, mu=mu, integrator=integrator_cls)
+            trajectory = sim.run(dt=dt, num_steps=num_steps)
+            times = sim.times
+
+            crossings = detect_positive_x_crossings(times, trajectory, r0=r0, mu=mu)
+            crossing_map = {ev.orbit_index: ev for ev in crossings}
+            history = compute_decomposed_error_history(times, trajectory, r0=r0, mu=mu)
+
+            summaries[(method_name, dt)] = {
+                "times": times,
+                "history": history,
+                "crossings": crossings,
+            }
+
+            for m in checkpoints_m:
+                t_exact = m * t_orbit
+                closest_idx = min(
+                    range(len(history)), key=lambda i: abs(history[i].t - t_exact)
+                )
+                rec = history[closest_idx]
+                ev = crossing_map.get(m)
+                has_crossing = ev is not None
+
+                phase_derived_dT = -rec.delta_theta / (2.0 * math.pi * m)
+                if has_crossing:
+                    t_cross: Optional[float] = ev.t_cross
+                    p_inst: Optional[float] = ev.period_instantaneous
+                    p_cum: Optional[float] = ev.period_cumulative
+                    p_err: Optional[float] = ev.period_cumulative - t_orbit
+                    rel_dT: Optional[float] = ev.delta_T_cumulative
+                    dT_diff: Optional[float] = abs(rel_dT - phase_derived_dT)
+                else:
+                    t_cross = None
+                    p_inst = None
+                    p_cum = None
+                    p_err = None
+                    rel_dT = None
+                    dT_diff = None
+
+                prev_dt, prev_rel_dT, prev_phase_err = prev_errors.get(
+                    m, (None, None, None)
+                )
+                if (
+                    prev_dt is not None
+                    and rel_dT is not None
+                    and prev_rel_dT is not None
+                    and abs(rel_dT) > 1e-13
+                ):
+                    order_period = convergence_order(
+                        abs(prev_rel_dT), abs(rel_dT), prev_dt, dt
+                    )
+                else:
+                    order_period = 0.0
+
+                if (
+                    prev_dt is not None
+                    and prev_phase_err is not None
+                    and abs(rec.delta_theta) > 1e-13
+                ):
+                    order_phase = convergence_order(
+                        abs(prev_phase_err), abs(rec.delta_theta), prev_dt, dt
+                    )
+                else:
+                    order_phase = 0.0
+
+                prev_errors[m] = (dt, rel_dT, rec.delta_theta)
+
+                chord_err = phase_derived_chord_error(rec.delta_theta, r0)
+                along_track_disp = phase_derived_along_track_displacement(
+                    rec.delta_theta, r0
+                )
+
+                records.append({
+                    "method": method_name,
+                    "dt": dt,
+                    "checkpoint_m": m,
+                    "has_crossing": has_crossing,
+                    "t_exact": t_exact,
+                    "t_cross": t_cross,
+                    "period_inst_s": p_inst,
+                    "period_cum_s": p_cum,
+                    "period_error_s": p_err,
+                    "relative_period_error": rel_dT,
+                    "phase_derived_delta_T": phase_derived_dT,
+                    "period_error_diff": dT_diff,
+                    "phase_error_rad": rec.delta_theta,
+                    "along_track_disp_km": along_track_disp,
+                    "chord_error_km": chord_err,
+                    "radial_error_km": abs(rec.delta_r),
+                    "cartesian_error_km": rec.position_error,
+                    "velocity_error_km_s": rec.velocity_error,
+                    "relative_energy_error": rec.energy_error,
+                    "relative_angular_momentum_error": rec.angular_momentum_error,
+                    "order_period": order_period,
+                    "order_phase": order_phase,
+                })
+
+    return records, summaries
+
+
+def save_period_phase_csv(records: List[Dict[str, Any]], filepath: Path) -> None:
+    """Save M8.3 period and phase analysis records to CSV."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=PLANNED_PERIOD_PHASE_COLUMNS, lineterminator="\n"
+        )
+        writer.writeheader()
+        for r in records:
+            writer.writerow(r)
+
+
+def print_period_phase_table(records: List[Dict[str, Any]]) -> None:
+    """Print ASCII formatted summary table of period and phase results at 100 orbits."""
+    print("=" * 135)
+    print("OrbitSim M8.3: Orbital Period Error and Phase Drift Analysis (100 Orbits Checkpoint)")
+    print("=" * 135)
+    header = (
+        f"{'Method':<16} | {'dt (s)':>7} | {'Orbits':>6} | {'rel_dT (event)':>15} | "
+        f"{'p-derived dT':>15} | {'Phase Err (rad)':>16} | {'Chord Err (km)':>15} | "
+        f"{'Cart Err (km)':>15} | {'Ord (T)':>7} | {'Ord (ph)':>8}"
+    )
+    print(header)
+    print("-" * 135)
+    for r in records:
+        if r["checkpoint_m"] == 100:
+            rel_dT_str = f"{r['relative_period_error']:15.6e}" if r["relative_period_error"] is not None else f"{'N/A (diverged)':>15}"
+            diff_str = f"{r['phase_derived_delta_T']:15.6e}"
+            ord_t_str = f"{r['order_period']:7.2f}" if r["order_period"] > 0 else f"{'N/A':>7}"
+            ord_p_str = f"{r['order_phase']:8.2f}" if r["order_phase"] > 0 else f"{'N/A':>8}"
+            print(
+                f"{r['method']:<16} | {r['dt']:>7.3f} | {r['checkpoint_m']:>6d} | {rel_dT_str} | "
+                f"{diff_str} | {r['phase_error_rad']:>16.6e} | {r['chord_error_km']:>15.4f} | "
+                f"{r['cartesian_error_km']:>15.4f} | {ord_t_str} | {ord_p_str}"
+            )
+    print("=" * 135)
+
+
+def plot_period_phase_results(
+    records: List[Dict[str, Any]], output_dir: Path
+) -> List[Path]:
+    """Generate M8.3 period error and phase drift analysis plots.
+
+    Creates:
+    1. exp08_phase_error_vs_time.png (Signed phase error vs orbit count across timesteps)
+    2. exp08_phase_drift_vs_dt.png (Phase drift rate vs timestep log-log with slopes)
+    3. exp08_period_error_vs_dt.png (Relative period error vs timestep log-log with slopes)
+
+    Args:
+        records: List of checkpoint records from run_period_phase_study.
+        output_dir: Destination directory.
+
+    Returns:
+        List of generated image paths.
+    """
+    os.environ.setdefault("MPLCONFIGDIR", str(PROJECT_ROOT / ".cache"))
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    generated_plots: List[Path] = []
+
+    dt_values = [60.0, 30.0, 15.0, 7.5]
+    methods = ["Euler", "Velocity Verlet", "RK4", "Yoshida 4"]
+    colors = {
+        "Euler": "#d95f02",
+        "Velocity Verlet": "#7570b3",
+        "RK4": "#1b9e77",
+        "Yoshida 4": "#e7298a",
+    }
+    markers = {
+        "Euler": "s",
+        "Velocity Verlet": "^",
+        "RK4": "o",
+        "Yoshida 4": "D",
+    }
+
+    by_method_dt: Dict[Tuple[str, float], List[Dict[str, Any]]] = {}
+    for r in records:
+        by_method_dt.setdefault((r["method"], r["dt"]), []).append(r)
+
+    # 1. Phase error vs time (Signed phase error over 100 orbits)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10), dpi=150)
+    for idx, dt in enumerate(dt_values):
+        ax = axes[idx // 2, idx % 2]
+        for method in methods:
+            series = by_method_dt.get((method, dt), [])
+            if not series:
+                continue
+            orbits = [s["checkpoint_m"] for s in series]
+            phase_vals = [s["phase_error_rad"] for s in series]
+            ax.plot(
+                orbits,
+                phase_vals,
+                label=method,
+                color=colors[method],
+                marker=markers[method],
+                linewidth=1.8,
+                markersize=6,
+            )
+        ax.axhline(0.0, color="gray", linestyle="--", alpha=0.6, linewidth=1.0)
+        ax.set_title(fr"$\Delta t = {dt}$ s", fontsize=12, fontweight="bold")
+        ax.set_xlabel("Orbit Count $m$", fontsize=10)
+        ax.set_ylabel(r"Signed Phase Error $\Delta\theta$ [rad]", fontsize=10)
+        ax.grid(True, ls="--", alpha=0.4)
+        ax.legend(loc="best", fontsize=9, framealpha=0.9)
+
+    fig.suptitle(
+        "M8.3: Signed Continuous Phase Error vs. Orbit Count (100 Orbits)",
+        fontsize=14,
+        fontweight="bold",
+    )
+    fig.tight_layout()
+    plot1_path = output_dir / "exp08_phase_error_vs_time.png"
+    fig.savefig(plot1_path)
+    plt.close(fig)
+    generated_plots.append(plot1_path)
+
+    # 2. Phase drift rate vs dt
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
+    for method in methods:
+        dt_list = []
+        drift_rate_list = []
+        for dt in dt_values:
+            series = by_method_dt.get((method, dt), [])
+            if not series:
+                continue
+            rec100 = series[-1]
+            t_eval = rec100["t_exact"]
+            drift_rate = abs(rec100["phase_error_rad"]) / t_eval
+            if drift_rate > 1e-18:
+                dt_list.append(dt)
+                drift_rate_list.append(drift_rate)
+
+        if dt_list:
+            ax.loglog(
+                dt_list,
+                drift_rate_list,
+                label=method,
+                color=colors[method],
+                marker=markers[method],
+                linewidth=2.0,
+                markersize=8,
+            )
+
+    dt_ref = [7.5, 60.0]
+    ax.loglog(dt_ref, [2e-7 * (dt / 7.5) ** 1 for dt in dt_ref], "k:", alpha=0.5, label=r"$\mathcal{O}(\Delta t)$")
+    ax.loglog(dt_ref, [5e-10 * (dt / 7.5) ** 2 for dt in dt_ref], "k--", alpha=0.5, label=r"$\mathcal{O}(\Delta t^2)$")
+    ax.loglog(dt_ref, [1e-15 * (dt / 7.5) ** 4 for dt in dt_ref], "k-.", alpha=0.5, label=r"$\mathcal{O}(\Delta t^4)$")
+
+    ax.set_title("M8.3: Phase Drift Rate vs. Timestep (100-Orbit Horizon)", fontsize=13, fontweight="bold")
+    ax.set_xlabel(r"Timestep $\Delta t$ [s]", fontsize=11)
+    ax.set_ylabel(r"Phase Drift Rate $|\dot{\theta}_{\mathrm{drift}}| = |\Delta\theta| / t$ [rad/s]", fontsize=11)
+    ax.set_xticks(dt_values)
+    ax.set_xticklabels([str(dt) for dt in dt_values])
+    ax.grid(True, which="both", ls="--", alpha=0.5)
+    ax.legend(loc="upper left", fontsize=10, framealpha=0.9)
+    fig.tight_layout()
+    plot2_path = output_dir / "exp08_phase_drift_vs_dt.png"
+    fig.savefig(plot2_path)
+    plt.close(fig)
+    generated_plots.append(plot2_path)
+
+    # 3. Relative period error vs dt
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
+    for method in methods:
+        dt_list = []
+        period_err_list = []
+        for dt in dt_values:
+            series = by_method_dt.get((method, dt), [])
+            if not series:
+                continue
+            rec100 = series[-1]
+            rel_dT = rec100["relative_period_error"]
+            if rel_dT is not None and abs(rel_dT) > 1e-18:
+                dt_list.append(dt)
+                period_err_list.append(abs(rel_dT))
+            elif rec100["phase_derived_delta_T"] is not None:
+                dt_list.append(dt)
+                period_err_list.append(abs(rec100["phase_derived_delta_T"]))
+
+        if dt_list:
+            ax.loglog(
+                dt_list,
+                period_err_list,
+                label=method,
+                color=colors[method],
+                marker=markers[method],
+                linewidth=2.0,
+                markersize=8,
+            )
+
+    ax.loglog(dt_ref, [5e-5 * (dt / 7.5) ** 1 for dt in dt_ref], "k:", alpha=0.5, label=r"$\mathcal{O}(\Delta t)$")
+    ax.loglog(dt_ref, [1e-7 * (dt / 7.5) ** 2 for dt in dt_ref], "k--", alpha=0.5, label=r"$\mathcal{O}(\Delta t^2)$")
+    ax.loglog(dt_ref, [1e-13 * (dt / 7.5) ** 4 for dt in dt_ref], "k-.", alpha=0.5, label=r"$\mathcal{O}(\Delta t^4)$")
+
+    ax.set_title("M8.3: Relative Orbital Period Error vs. Timestep", fontsize=13, fontweight="bold")
+    ax.set_xlabel(r"Timestep $\Delta t$ [s]", fontsize=11)
+    ax.set_ylabel(r"Relative Period Error $|\delta T|$", fontsize=11)
+    ax.set_xticks(dt_values)
+    ax.set_xticklabels([str(dt) for dt in dt_values])
+    ax.grid(True, which="both", ls="--", alpha=0.5)
+    ax.legend(loc="upper left", fontsize=10, framealpha=0.9)
+    fig.tight_layout()
+    plot3_path = output_dir / "exp08_period_error_vs_dt.png"
+    fig.savefig(plot3_path)
+    plt.close(fig)
+    generated_plots.append(plot3_path)
+
+    return generated_plots
+
+
 def run_planned_accuracy_vs_cost() -> List[Dict[str, Any]]:
     """Execute Study 2b (M8.2b): Error metrics vs. force evaluations across 4 solvers.
 
@@ -1082,7 +1472,7 @@ def run_planned_invariant_quality_comparison() -> None:
 
 
 def main() -> None:
-    """Execute Milestone M8.1, M8.2a, and M8.2b experimental pipelines."""
+    """Execute Milestone M8.1, M8.2a, M8.2b, and M8.3 experimental pipelines."""
     print("=" * 80)
     print("OrbitSim — Milestone M8: Systematic Solver Benchmark")
     print("=" * 80)
@@ -1138,9 +1528,22 @@ def main() -> None:
     for p in cost_plots:
         print(f"  Plot: {p.resolve()}")
 
+    # Phase 4: M8.3 Orbital Period Error and Phase Drift Analysis
+    print("\n>>> Phase 4: Running Milestone M8.3 (Period Error & Phase Drift, 100 Orbits)...")
+    period_phase_records, _ = run_period_phase_study()
+    print_period_phase_table(period_phase_records)
+
+    period_phase_csv = results_dir / "exp08_period_phase_analysis.csv"
+    save_period_phase_csv(period_phase_records, period_phase_csv)
+    print(f"Period and phase analysis saved to: {period_phase_csv.resolve()} ({len(period_phase_records)} rows)")
+
+    print("Generating M8.3 period and phase plots...")
+    phase_plots = plot_period_phase_results(period_phase_records, results_dir)
+    for p in phase_plots:
+        print(f"  Plot: {p.resolve()}")
+
     print("\n" + "=" * 80)
-    print("Milestones M8.1, M8.2a, and M8.2b Execution Complete.")
-    print("Milestone M8.3 is deferred and NOT executed.")
+    print("Milestones M8.1, M8.2a, M8.2b, and M8.3 Execution Complete.")
     print("=" * 80)
 
 

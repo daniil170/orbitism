@@ -516,4 +516,139 @@ Cost normalization reveals clear physical and computational trade-offs depending
   * Adaptive timestepping or embedded Runge-Kutta / symplectic algorithms;
   * Alternative or optimized implementations of the same methods;
   * Physical hardware-dependent execution speed.
-* **Milestone M8.3 Status**: Milestone M8.3 is deferred and was **NOT** executed in this phase.
+* **Milestone M8.3 Status**: Milestone M8.3 has been executed and documented in Section 15 below.
+
+---
+
+## 15. Milestone M8.3 — Orbital Period Error and Phase Drift Analysis
+
+### 15.1 Scientific Objective and Questions
+
+Milestone M8.3 systematically investigates the accumulation of along-track phase drift and the error in the numerical orbital period across Explicit Euler, Velocity Verlet, Classical RK4, and Yoshida 4.
+
+The core research questions addressed are:
+1. **Time Evolution of Phase Error**: How does the continuous angular phase error $\Delta\theta(t) = \theta_{\text{num}}(t) - n t$ accumulate over a multi-orbit horizon ($1T \le t \le 100T$)? Is the growth secular and linear for stable solvers?
+2. **Timestep Scaling of Phase Drift Rate and Period Error**: How do the phase drift rate $|\dot{\theta}_{\text{drift}}| = |\Delta\theta| / t$ and relative orbital period error $\delta T$ scale with integration timestep $\Delta t \in \{60.0, 30.0, 15.0, 7.5\}\text{ s}$? Do the observed empirical convergence orders match the formal order $p$ of each scheme?
+3. **Cartesian Error vs. Along-Track Phase Drift**: To what extent is total Cartesian position error $e_r(t)$ explained by along-track phase drift through the geometric chord model $2 r_0 |\sin(\Delta\theta/2)|$, compared against radial deviation $\Delta r(t)$?
+4. **Decoupling of Phase Accuracy and Invariant Preservation**: Does symplectic invariant conservation guarantee higher phase accuracy, or can non-symplectic schemes (such as RK4) exhibit comparable or lower phase drift rates despite energy dissipation?
+
+---
+
+### 15.2 Mathematical Formulation and Definitions
+
+#### 15.2.1 Analytical Baseline
+For the unperturbed circular Earth orbit ($r_0 = 6778.137\text{ km}$, $\mu = 398600.435\text{ km}^3/\text{s}^2$):
+* Mean motion: $n = \sqrt{\mu / r_0^3} \approx 1.131370197 \times 10^{-3}\text{ rad/s}$.
+* Exact orbital period:
+  $$T_{\text{exact}} = \frac{2\pi}{n} = 2\pi \sqrt{\frac{r_0^3}{\mu}} \approx 5553.624318623783\text{ s} \quad (\approx 92.5604\text{ min}).$$
+* Analytical reference phase: $\theta_{\text{exact}}(t) = n t$.
+
+#### 15.2.2 Geometric Event: Positive x-Axis Crossing in the Prograde Direction
+In this planar 2D formulation, an orbital revolution is demarcated by the crossing of the positive x-axis in the prograde direction:
+$$y_i \le 0 < y_{i+1}, \quad x_i > 0, \quad x_{i+1} > 0, \quad v_{y,i} > 0, \quad v_{y,i+1} > 0.$$
+* *Initial condition at $t = 0$*: $\mathbf{r}_0 = [r_0, 0]^T$, $\mathbf{v}_0 = [0, \sqrt{\mu/r_0}]^T$. The state at $t = 0$ lies analytically on the positive x-axis ($t^*_0 = 0.0\text{ s}$).
+* The first detected crossing corresponds to the completion of revolution $m = 1$.
+
+#### 15.2.3 Sub-Step Event Interpolation via Cubic Hermite Root Finding
+To locate the exact sub-step crossing timestamp $t^*_m = t_i + s^* \Delta t_{\text{actual}}$ without introducing low-order polynomial truncation, cubic Hermite interpolation is constructed on $s \in [0, 1]$:
+$$P(s) = (1 - 3s^2 + 2s^3) y_i + (3s^2 - 2s^3) y_{i+1} + \Delta t [s(1-s)^2 v_{y,i} + s^2(s-1) v_{y,i+1}].$$
+The root $s^* \in [0, 1]$ such that $P(s^*) = 0$ is obtained via Newton-Raphson iterations with bracket-preserving bisection fallback, terminating when $|P(s)| < 10^{-12}$ or bracket width $< 10^{-12}$.
+The interpolated state $\mathbf{s}(t^*_m) = [x^*, 0, v_x^*, v_y^*]^T$ is evaluated analytically from the Hermite polynomial and its time derivative.
+
+#### 15.2.4 Orbital Period Metrics
+For revolution $m \ge 1$ with crossing timestamp $t^*_m$:
+* **Instantaneous Revolution Period**:
+  $$T_{\text{inst}}(m) = t^*_m - t^*_{m-1} \quad [\text{s}].$$
+* **Cumulative Mean Period**:
+  $$T_{\text{cum}}(m) = \frac{t^*_m}{m} \quad [\text{s}].$$
+* **Relative Period Error**:
+  $$\delta T_{\text{cum}}(m) = \frac{T_{\text{cum}}(m) - T_{\text{exact}}}{T_{\text{exact}}} = \frac{t^*_m - m T_{\text{exact}}}{m T_{\text{exact}}}.$$
+
+#### 15.2.5 Continuous Phase Error and Sign Convention
+From the continuous unwrapped angular position $\theta_{\text{num}}(t)$ (obtained via `unwrap_phase` on atan2):
+$$\Delta\theta(t) = \theta_{\text{num}}(t) - n t \quad [\text{rad}].$$
+* **Sign Convention**:
+  * $\Delta\theta > 0$: Numerical satellite leads the analytical reference position along the orbit.
+  * $\Delta\theta < 0$: Numerical satellite lags the analytical reference position along the orbit.
+
+#### 15.2.6 Theoretical Connection Between Period Error and Phase Drift
+At the exact crossing timestamp $t^*_m$, the geometric angle is by definition $\theta_{\text{num}}(t^*_m) = 2\pi m$. Thus:
+$$\Delta\theta(t^*_m) = 2\pi m - n t^*_m = n (m T_{\text{exact}} - t^*_m) = -n \cdot m T_{\text{exact}} \cdot \delta T_{\text{cum}}(m) = -2\pi m \cdot \delta T_{\text{cum}}(m).$$
+Consequently, at each crossing event:
+$$\delta T_{\text{cum}}(m) = -\frac{\Delta\theta(t^*_m)}{2\pi m} \quad \text{(exact identity at event timestamp)}.$$
+When evaluated at the discrete checkpoint timestamp $t \approx m T_{\text{exact}}$, the relation serves as a first-order theoretical cross-check:
+$$\delta T_{\text{phase-derived}} \approx -\frac{\Delta\theta(m T_{\text{exact}})}{2\pi m}.$$
+
+#### 15.2.7 Cartesian Error Decomposition and Geometric Chord Model
+Under the ideal circular approximation ($r \approx r_0$), the Euclidean distance between two points on the circle separated by angular difference $\Delta\theta$ is given by the geometric chord formula:
+$$e_{\text{chord}}(\Delta\theta) = 2 r_0 \left|\sin\left(\frac{\Delta\theta}{2}\right)\right| \quad [\text{km}].$$
+Additionally, the first-order along-track arc displacement diagnostic is:
+$$\Delta s_{\text{along-track}} = r_0 \Delta\theta \quad [\text{km}].$$
+
+---
+
+### 15.3 Experimental Protocol
+
+* **Solvers**: Explicit Euler, Velocity Verlet, Classical RK4, Yoshida 4.
+* **Timestep Grid**: $\Delta t \in \{60.0, 30.0, 15.0, 7.5\}\text{ s}$ (4 levels, factor of 2 progression).
+* **Integration Stepping**: Simulations run with constant $\Delta t$ without shortened final steps. Total steps $N = \lceil 100.5 T_{\text{exact}} / \Delta t \rceil$ ensure coverage exceeding 100 revolutions.
+* **Checkpoint Horizons**: $m \in \{1, 5, 10, 20, 50, 100\}$ orbital revolutions.
+* **Sampling Protocol**:
+  * Crossing events $t^*_m$ detected via cubic Hermite root finding across trajectory steps.
+  * For continuous metrics at nominal horizon $m T_{\text{exact}}$, evaluated at the nearest integration step.
+* **Artifacts Generated**:
+  * `results/exp08_period_phase_analysis.csv` (96 rows: 4 solvers $\times$ 4 timesteps $\times$ 6 checkpoints).
+  * `results/exp08_phase_error_vs_time.png` (Signed phase error $\Delta\theta(t)$ across 100 orbits).
+  * `results/exp08_phase_drift_vs_dt.png` (Phase drift rate $|\dot{\theta}_{\text{drift}}|$ vs $\Delta t$).
+  * `results/exp08_period_error_vs_dt.png` (Relative period error $|\delta T|$ vs $\Delta t$).
+
+---
+
+### 15.4 Empirical Results (100 Orbits Horizon)
+
+The table below summarizes numerical results extracted at the 100-orbit checkpoint ($m = 100$, $t \approx 555362.432\text{ s}$):
+
+| Solver | $\Delta t$ (s) | Event $\delta T$ | Phase-Derived $\delta T$ | Phase Error $\Delta\theta$ (rad) | Chord Error (km) | Cartesian $e_r$ (km) | Radial $|\Delta r|$ (km) | Order $p_T$ | Order $p_{\theta}$ |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Euler** | $60.0$ | N/A (diverged) | $+8.9221 \times 10^{-1}$ | $-5.6059 \times 10^{2}$ | $8658.998$ | $61765.052$ | $55873.786$ | N/A | N/A |
+| | $30.0$ | N/A (diverged) | $+8.4117 \times 10^{-1}$ | $-5.2852 \times 10^{2}$ | $4883.772$ | $32918.651$ | $30842.446$ | N/A | $0.08$ |
+| | $15.0$ | N/A (diverged) | $+7.8018 \times 10^{-1}$ | $-4.9020 \times 10^{2}$ | $781.269$ | $20596.290$ | $20536.490$ | N/A | $0.11$ |
+| | $7.5$ | N/A (diverged) | $+7.0354 \times 10^{-1}$ | $-4.4205 \times 10^{2}$ | $12162.450$ | $26956.694$ | $15504.130$ | N/A | $0.15$ |
+| **Velocity Verlet** | $60.0$ | $+1.5324 \times 10^{-3}$ | $+1.5333 \times 10^{-3}$ | $-9.6341 \times 10^{-1}$ | $6280.483$ | $6280.591$ | $0.234$ | N/A | N/A |
+| | $30.0$ | $+3.8376 \times 10^{-4}$ | $+3.8383 \times 10^{-4}$ | $-2.4117 \times 10^{-1}$ | $1630.707$ | $1630.707$ | $0.0039$ | $2.00$ | $2.00$ |
+| | $15.0$ | $+9.5984 \times 10^{-5}$ | $+9.5989 \times 10^{-5}$ | $-6.0312 \times 10^{-2}$ | $408.739$ | $408.739$ | $7.8 \times 10^{-5}$ | $2.00$ | $2.00$ |
+| | $7.5$ | $+2.3999 \times 10^{-5}$ | $+2.3999 \times 10^{-5}$ | $-1.5079 \times 10^{-2}$ | $102.208$ | $102.208$ | $2.6 \times 10^{-6}$ | $2.00$ | $2.00$ |
+| **Classical RK4** | $60.0$ | $-1.9371 \times 10^{-5}$ | $-1.9371 \times 10^{-5}$ | $+1.2171 \times 10^{-2}$ | $82.499$ | $82.498$ | $0.171$ | N/A | N/A |
+| | $30.0$ | $-6.2013 \times 10^{-7}$ | $-6.2013 \times 10^{-7}$ | $+3.8964 \times 10^{-4}$ | $2.641$ | $2.641$ | $0.0035$ | $4.97$ | $4.97$ |
+| | $15.0$ | $-2.0327 \times 10^{-8}$ | $-2.0326 \times 10^{-8}$ | $+1.2771 \times 10^{-5}$ | $0.0866$ | $0.0866$ | $7.1 \times 10^{-5}$ | $4.93$ | $4.93$ |
+| | $7.5$ | $-6.9459 \times 10^{-10}$ | $-6.9459 \times 10^{-10}$ | $+4.3642 \times 10^{-7}$ | $0.0030$ | $0.0030$ | $1.4 \times 10^{-6}$ | $4.87$ | $4.87$ |
+| **Yoshida 4** | $60.0$ | $-1.9685 \times 10^{-5}$ | $-1.9685 \times 10^{-5}$ | $+1.2368 \times 10^{-2}$ | $83.832$ | $83.832$ | $1.0 \times 10^{-5}$ | N/A | N/A |
+| | $30.0$ | $-1.2292 \times 10^{-6}$ | $-1.2292 \times 10^{-6}$ | $+7.7234 \times 10^{-4}$ | $5.235$ | $5.235$ | $6.4 \times 10^{-10}$ | $4.00$ | $4.00$ |
+| | $15.0$ | $-7.6811 \times 10^{-8}$ | $-7.6811 \times 10^{-8}$ | $+4.8262 \times 10^{-5}$ | $0.3271$ | $0.3271$ | $1.8 \times 10^{-11}$ | $4.00$ | $4.00$ |
+| | $7.5$ | $-4.8004 \times 10^{-9}$ | $-4.8004 \times 10^{-9}$ | $+3.0162 \times 10^{-6}$ | $0.0204$ | $0.0204$ | $1.5 \times 10^{-11}$ | $4.00$ | $4.00$ |
+
+---
+
+### 15.5 Key Scientific Findings and Discussion
+
+1. **Sign of Phase Drift and Period Deviation**:
+   * *Velocity Verlet*: Exhibits positive relative period error ($\delta T > 0$, period is longer than analytical: $T_{\text{num}} \approx 5562.13\text{ s} > 5553.62\text{ s}$ at $\Delta t = 60\text{ s}$). Consequently, the numerical satellite lags behind the analytical reference position ($\Delta\theta < 0$, $\Delta\theta(100T) \approx -0.963\text{ rad}$).
+   * *Classical RK4*: Exhibits negative relative period error ($\delta T < 0$, period is slightly shorter than analytical). Consequently, the numerical satellite leads the analytical reference position ($\Delta\theta > 0$, $\Delta\theta(100T) \approx +0.0122\text{ rad}$ at $\Delta t = 60\text{ s}$).
+   * *Yoshida 4*: Exhibits negative relative period error ($\delta T < 0$, numerical satellite leads: $\Delta\theta > 0$, $\Delta\theta(100T) \approx +0.0124\text{ rad}$ at $\Delta t = 60\text{ s}$).
+   * *Explicit Euler*: Rapidly spirals outward ($\Delta r > 15000\text{ km}$ at 100 orbits), causing the physical period of the expanding orbit ($T \propto r^{3/2}$) to lengthen drastically. Within $t = 100 T_{\text{exact}}$, Euler completes only 10 to 29 revolutions across the tested timesteps; revolution $m = 100$ is not reached within this physical duration.
+
+2. **Empirical Convergence Order Scaling**:
+   * *Velocity Verlet*: Empirical convergence order for relative period error $\delta T$ and phase drift rate $|\Delta\theta| / t$ is $p = 2.00$ across all tested intervals ($[60 \to 30 \to 15 \to 7.5]\text{ s}$), precisely matching its 2nd-order theoretical design.
+   * *Yoshida 4*: Empirical convergence order is $p = 4.00$ across all intervals, precisely matching its 4th-order theoretical design.
+   * *Classical RK4*: Empirical convergence order is $p \approx 4.87 - 4.97$, consistent with higher-order error cancellation effects on circular orbits observed in M8.1 and M8.2a.
+   * *Explicit Euler*: Empirical convergence order is sub-linear ($p \le 0.15$), reflecting its divergent spiral character.
+
+3. **Cartesian Error Decomposition vs. Geometric Chord Model**:
+   * For the three bounded schemes (Velocity Verlet, Classical RK4, Yoshida 4), Cartesian position error at 100 orbits is virtually identical to the phase-derived geometric chord error $2 r_0 |\sin(\Delta\theta/2)|$ (ratio $e_{\text{chord}} / e_r \in [0.99998, 1.00001]$).
+   * In contrast, radial error $|\Delta r|$ is several orders of magnitude smaller than Cartesian position error (e.g. at $\Delta t = 60\text{ s}$, $|\Delta r| \approx 0.23\text{ km}$ for Verlet and $10^{-5}\text{ km}$ for Yoshida 4, whereas $e_r \approx 6280\text{ km}$ and $84\text{ km}$, respectively).
+   * For Explicit Euler, the chord model completely breaks down ($e_{\text{chord}} / e_r < 0.25$) because Cartesian error is driven by radial expansion rather than simple along-track rotation.
+
+4. **Decoupling of Phase Accuracy and Invariant Preservation**:
+   * *Symplectic Guarantee*: Velocity Verlet and Yoshida 4 preserve specific angular momentum to machine precision ($|\delta h| < 10^{-14}$) and bound energy error within small oscillatory envelopes ($|\delta\varepsilon| \le 1.9 \times 10^{-12}$ for Yoshida 4). However, symplecticity does not eliminate phase drift: both symplectic schemes accumulate along-track phase drift that grows linearly in time ($\Delta\theta \propto t$).
+   * *Comparison at $\Delta t = 60\text{ s}$*: Classical RK4 exhibits dissipative energy decrease ($|\delta\varepsilon| \approx 10^{-4}$ at 100 orbits), yet its phase drift rate and Cartesian error ($e_r \approx 82.5\text{ km}$) are slightly smaller than those of Yoshida 4 ($e_r \approx 83.8\text{ km}$) and far smaller than Velocity Verlet ($e_r \approx 6280.6\text{ km}$).
+   * *Conclusion*: Symplectic preservation of physical invariants guarantees qualitative structural stability (bounded orbital radius and invariant envelopes), but does not imply smaller phase drift than higher-order dissipative schemes over finite simulation horizons.
