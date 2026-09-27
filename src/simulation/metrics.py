@@ -9,6 +9,7 @@ from src.physics.gravity import MU_EARTH
 from src.physics.analytical import (
     circular_orbit_exact_state,
     circular_orbit_mean_motion,
+    circular_orbit_period,
     specific_orbital_energy,
     specific_angular_momentum,
 )
@@ -498,3 +499,255 @@ def compute_decomposed_error_history(
         )
 
     return history
+
+
+def cubic_hermite_root(
+    y0: float,
+    y1: float,
+    dy0: float,
+    dy1: float,
+    dt: float,
+    tol: float = 1e-12,
+    max_iter: int = 50,
+) -> float:
+    """Find root s* in [0, 1] of cubic Hermite polynomial P(s) = 0.
+
+    Interpolates y(t) across a step [t_0, t_0 + dt] with normalized parameter
+    s = (t - t_0) / dt in [0, 1], where y(0) = y0, y(1) = y1, y'(0) = dt * dy0,
+    y'(1) = dt * dy1.
+
+    Uses Newton-Raphson iterations with bracket-preserving bisection fallback.
+
+    Args:
+        y0: Value at s=0.
+        y1: Value at s=1.
+        dy0: Derivative dy/dt at s=0.
+        dy1: Derivative dy/dt at s=1.
+        dt: Interval step size in seconds (must be positive).
+        tol: Convergence tolerance for |P(s)| and interval width.
+        max_iter: Maximum number of iterations.
+
+    Returns:
+        Root s* in [0, 1].
+
+    Raises:
+        ValueError: If dt <= 0 or endpoints do not bracket zero.
+        RuntimeError: If root finding fails to converge within max_iter.
+    """
+    if dt <= 0:
+        raise ValueError(f"Timestep dt must be positive, got {dt}.")
+
+    if abs(y0) < 1e-15:
+        return 0.0
+    if abs(y1) < 1e-15:
+        return 1.0
+
+    if y0 * y1 > 0:
+        raise ValueError(
+            f"Endpoints do not bracket zero: y0={y0}, y1={y1}."
+        )
+
+    def p(s: float) -> float:
+        s2 = s * s
+        s3 = s2 * s
+        return (1.0 - 3.0 * s2 + 2.0 * s3) * y0 + s2 * (3.0 - 2.0 * s) * y1 + dt * (
+            s * (1.0 - s) ** 2 * dy0 + s2 * (s - 1.0) * dy1
+        )
+
+    def dp(s: float) -> float:
+        s2 = s * s
+        return 6.0 * (s2 - s) * y0 + 6.0 * (s - s2) * y1 + dt * (
+            (3.0 * s2 - 4.0 * s + 1.0) * dy0 + (3.0 * s2 - 2.0 * s) * dy1
+        )
+
+    a, b = 0.0, 1.0
+    p_a = y0
+
+    # Initial guess via linear interpolation
+    s = -y0 / (y1 - y0)
+    s = max(0.0, min(1.0, s))
+
+    for _ in range(max_iter):
+        val = p(s)
+        if abs(val) < tol:
+            return s
+
+        if p_a * val <= 0.0:
+            b = s
+        else:
+            a = s
+            p_a = val
+
+        if (b - a) < tol:
+            return 0.5 * (a + b)
+
+        d = dp(s)
+        if abs(d) > 1e-15:
+            s_new = s - val / d
+            if a < s_new < b:
+                s = s_new
+                continue
+
+        s = 0.5 * (a + b)
+
+    final_val = p(s)
+    if abs(final_val) <= 10.0 * tol or (b - a) <= 10.0 * tol:
+        return s
+
+    raise RuntimeError(
+        f"Cubic Hermite root solver failed to converge: s={s}, P(s)={final_val}, "
+        f"bracket=[{a}, {b}], tol={tol}, max_iter={max_iter}."
+    )
+
+
+@dataclass(frozen=True)
+class OrbitCrossingEvent:
+    """Record of an orbital crossing of the positive x-axis in the prograde direction.
+
+    Event condition: y_i <= 0 < y_{i+1} with x > 0 and v_y > 0.
+
+    Attributes:
+        orbit_index: 1-based completed orbit count m = 1, 2, ...
+        t_cross: Precise crossing timestamp in seconds.
+        state_cross: State2D at crossing timestamp.
+        period_instantaneous: Duration of this revolution: t_cross(m) - t_cross(m-1) [s].
+        period_cumulative: Cumulative mean period: t_cross(m) / m [s].
+        delta_T_cumulative: Relative period error: (period_cumulative - T_exact) / T_exact.
+        step_index: Discrete step index preceding the crossing.
+    """
+
+    orbit_index: int
+    t_cross: float
+    state_cross: State2D
+    period_instantaneous: float
+    period_cumulative: float
+    delta_T_cumulative: float
+    step_index: int
+
+
+def detect_positive_x_crossings(
+    times: Sequence[float],
+    trajectory: Sequence[State2D],
+    r0: float,
+    mu: float = MU_EARTH,
+) -> List[OrbitCrossingEvent]:
+    """Detect crossings of the positive x-axis in the prograde direction.
+
+    Identifies events where y crosses 0 with positive velocity (y_i <= 0 < y_{i+1},
+    x > 0, v_y > 0). Uses cubic Hermite interpolation to find sub-step crossing
+    timestamps and states.
+
+    Initial state at t=0 on positive x-axis (t*_0 = 0) is known analytically;
+    the first detected crossing corresponds to m=1 (one complete revolution).
+
+    Args:
+        times: Sequence of discrete timestamps in seconds.
+        trajectory: Sequence of numerical states State2D.
+        r0: Reference circular orbital radius in km.
+        mu: Gravitational parameter in km^3/s^2.
+
+    Returns:
+        List of OrbitCrossingEvent instances for m = 1, 2, ...
+
+    Raises:
+        ValueError: If input sequences have unequal length or fewer than 2 points.
+    """
+    if len(times) != len(trajectory):
+        raise ValueError(
+            f"Length mismatch: {len(times)} timestamps vs {len(trajectory)} states."
+        )
+    if len(times) < 2:
+        raise ValueError("Trajectory must have at least 2 points for event detection.")
+
+    t_exact = circular_orbit_period(r0, mu=mu)
+    events: List[OrbitCrossingEvent] = []
+    t_prev_cross = 0.0
+    orbit_count = 0
+
+    for i in range(len(trajectory) - 1):
+        s0 = trajectory[i]
+        s1 = trajectory[i + 1]
+        t0 = times[i]
+        t1 = times[i + 1]
+        dt = t1 - t0
+
+        if i == 0 and abs(s0.y) < 1e-14:
+            continue
+
+        if s0.y <= 0.0 < s1.y and s0.x > 0.0 and s1.x > 0.0 and s0.vy > 0.0 and s1.vy > 0.0:
+            s_root = cubic_hermite_root(
+                y0=s0.y,
+                y1=s1.y,
+                dy0=s0.vy,
+                dy1=s1.vy,
+                dt=dt,
+            )
+            t_cross = t0 + s_root * dt
+            orbit_count += 1
+
+            s2 = s_root * s_root
+            s3 = s2 * s_root
+            h00 = 1.0 - 3.0 * s2 + 2.0 * s3
+            h10 = s_root * (1.0 - s_root) ** 2
+            h01 = 3.0 * s2 - 2.0 * s3
+            h11 = s2 * (s_root - 1.0)
+
+            x_cross = h00 * s0.x + h01 * s1.x + dt * (h10 * s0.vx + h11 * s1.vx)
+            y_cross = 0.0
+
+            dh00 = 6.0 * (s2 - s_root)
+            dh10 = 3.0 * s2 - 4.0 * s_root + 1.0
+            dh01 = 6.0 * (s_root - s2)
+            dh11 = 3.0 * s2 - 2.0 * s_root
+
+            vx_cross = (dh00 * s0.x + dh01 * s1.x) / dt + dh10 * s0.vx + dh11 * s1.vx
+            vy_cross = (dh00 * s0.y + dh01 * s1.y) / dt + dh10 * s0.vy + dh11 * s1.vy
+
+            state_cross = State2D(x=x_cross, y=y_cross, vx=vx_cross, vy=vy_cross)
+
+            t_inst = t_cross - t_prev_cross
+            t_cum = t_cross / orbit_count
+            delta_t_cum = (t_cum - t_exact) / t_exact
+
+            events.append(
+                OrbitCrossingEvent(
+                    orbit_index=orbit_count,
+                    t_cross=t_cross,
+                    state_cross=state_cross,
+                    period_instantaneous=t_inst,
+                    period_cumulative=t_cum,
+                    delta_T_cumulative=delta_t_cum,
+                    step_index=i,
+                )
+            )
+            t_prev_cross = t_cross
+
+    return events
+
+
+def phase_derived_chord_error(delta_theta: float, r0: float) -> float:
+    """Compute geometric chord error between two points on circular orbit: 2*r0*|sin(Delta_theta / 2)|.
+
+    This serves as a reference geometric chord model under zero radial error.
+
+    Args:
+        delta_theta: Angular phase difference in radians.
+        r0: Reference orbital radius in km.
+
+    Returns:
+        Chord error in km.
+    """
+    return 2.0 * r0 * abs(math.sin(delta_theta / 2.0))
+
+
+def phase_derived_along_track_displacement(delta_theta: float, r0: float) -> float:
+    """Compute first-order along-track arc displacement diagnostic: r0 * Delta_theta.
+
+    Args:
+        delta_theta: Angular phase error in radians.
+        r0: Reference orbital radius in km.
+
+    Returns:
+        Along-track displacement in km.
+    """
+    return r0 * delta_theta
